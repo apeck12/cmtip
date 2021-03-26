@@ -112,7 +112,7 @@ def simulate_images(args):
 
 def main():
     """
-    Generate images and then run MTIP (sans orientation matching for now).
+    Generate images and optionally save to h5 file.
     """
 
     # gather command line input 
