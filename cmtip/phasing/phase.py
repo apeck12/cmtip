@@ -2,27 +2,11 @@ import numpy as np
 from scipy.ndimage import gaussian_filter
 
 """
-Functions for phasing an oversampled autocorrelation.
+Functions for phasing an oversampled autocorrelation. The convention is that 
+variable and variable_ are fft-shifted versions of each other, with variable_
+corresponding to the version in which the DC component is at the corner rather
+than the center of the volume.
 """
-
-def save_mrc(savename, data, voxel_size=None):
-    """
-    Save Nd numpy array to path savename in mrc format.
-    
-    :param savename: path to which to save mrc file
-    :param data: input numpy array
-    :param voxel_size: voxel size for header, optional
-    """
-    import mrcfile
-
-    mrc = mrcfile.new(savename, overwrite=True)
-    mrc.header.map = mrcfile.constants.MAP_ID
-    mrc.set_data(data.astype(np.float32))
-    if voxel_size is not None:
-        mrc.voxel_size = voxel_size
-    mrc.close()
-    return
-
 
 def center_of_mass(rho_, hkl_, M):
     """
@@ -192,8 +176,8 @@ def phase(generation, ac, support_=None, rho_=None, n_iterations=10):
     :return support_: updated support estimate
     :return rho_: updated density estimate
     """
-    Mquat = int((ac.shape[0]-1)/4)#parms.Mquat
-    M = ac.shape[0] #4*Mquat + 1
+    Mquat = int((ac.shape[0]-1)/4)
+    M = ac.shape[0] 
     Mtot = M**3
 
     ac_filt = gaussian_filter(np.maximum(ac.real, 0), mode='constant',
@@ -215,8 +199,8 @@ def phase(generation, ac, support_=None, rho_=None, n_iterations=10):
 
     rho_max = np.infty
 
-    nER = 10 #parms.nER
-    nHIO = 5 #parms.nHIO
+    nER = 10 
+    nHIO = 5 
 
     for i in range(n_iterations):
         ER_loop(nER, rho_, amplitudes_, amp_mask_, support_, rho_max)

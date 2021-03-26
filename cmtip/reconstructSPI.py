@@ -3,7 +3,7 @@ import numpy as np
 import skopi as sk
 import h5py
 
-from cmtip.phasing import phasing
+import cmtip.phasing as phaser
 from cmtip.autocorrelation import autocorrelation
 from cmtip.alignment import alignment
 
@@ -64,8 +64,8 @@ def save_output(generation, output, ac, rho_, orientations=None):
     :param orientations: array of quaternions 
     """
     rho_unshifted = np.fft.ifftshift(rho_)
-    phasing.save_mrc(os.path.join(output, "density%i.mrc" %generation), rho_unshifted)
-    phasing.save_mrc(os.path.join(output, "ac%i.mrc" %generation), ac)
+    phaser.maps.save_mrc(os.path.join(output, "density%i.mrc" %generation), rho_unshifted)
+    phaser.maps.save_mrc(os.path.join(output, "ac%i.mrc" %generation), ac)
     
     if orientations is not None:
         np.save(os.path.join(output, "orientations%i.npy" %generation), orientations)
@@ -117,7 +117,7 @@ def run_mtip(data, M, output, aligned=True, n_iterations=10):
                                   data['intensities'],
                                   M,
                                   orientations=orientations)
-    ac_phased, support_, rho_ = phasing.phase(generation, ac)
+    ac_phased, support_, rho_ = phaser.phase(generation, ac)
     save_output(generation, output, ac, rho_, orientations=None)
     
     # iterations 1-n_iterations: ac_estimate from phasing
@@ -145,7 +145,7 @@ def run_mtip(data, M, output, aligned=True, n_iterations=10):
                                       orientations=orientations.astype(np.float32),
                                       ac_estimate=ac_phased.astype(np.float32))
         # phase
-        ac_phased, support_, rho_ = phasing.phase(generation, ac, support_, rho_)
+        ac_phased, support_, rho_ = phaser.phase(generation, ac, support_, rho_)
         save_output(generation, output, ac, rho_, orientations)
 
     print("elapsed time is %.2f" %((time.time() - start_time)/60.0))
