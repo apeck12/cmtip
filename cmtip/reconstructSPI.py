@@ -5,7 +5,7 @@ import h5py
 
 import cmtip.phasing as phaser
 from cmtip.autocorrelation import autocorrelation
-from cmtip.alignment import alignment
+import cmtip.alignment as alignment
 
 def parse_input():
     """

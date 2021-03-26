@@ -6,7 +6,7 @@ import skopi as sk
 import os
 
 from cmtip.simulateSPI import *
-from cmtip.alignment import alignment
+import cmtip.alignment as alignment
 
 class TestAlignment(object):
     """
