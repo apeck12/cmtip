@@ -3,6 +3,11 @@ import numpy as np
 import skopi as sk
 import h5py
 
+"""
+Simulate an ultra-simple SPI datasets on a SimpleSquare detector and without any errors,
+including quantization. The images returned are of the scattered intensities, corrected
+for polarization and solid angle.
+"""
 
 def parse_input():
     """
@@ -28,7 +33,8 @@ def setup_experiment(args, increase_factor=1):
     :return exp: SPIExperiment object
     """
     beam = sk.Beam(args['beam_file'])
-    beam.set_photons_per_pulse(increase_factor*beam.get_photons_per_pulse())
+    if increase_factor != 1:
+        beam.set_photons_per_pulse(increase_factor*beam.get_photons_per_pulse())
     
     particle = sk.Particle()
     particle.read_pdb(args['pdb_file'], ff='WK')
@@ -64,12 +70,15 @@ def simulate_writeh5(args):
     # simulate images and save to h5 file
     imgs = f.create_dataset("intensities", shape=((args['n_images'],) + exp.det.shape))
     for num in range(args['n_images']):
-        imgs[num,:,:,:] = exp.generate_image_stack(return_intensities=True)
+        img = exp.generate_image_stack(return_intensities=True)
+        imgs[num,:,:,:] = img / exp.det.polarization_correction / exp.det.solid_angle_per_pixel
 
     # save useful attributes
     f.attrs['reciprocal_extent'] = np.linalg.norm(exp.det.pixel_position_reciprocal, axis=-1).max() # max |s|
     f.attrs['n_images'] = args['n_images'] # number of simulated shots
-    f.attrs['n_pixels'] = int(args['det_info'][0]) # square length of detector
+    f.attrs['n_pixels'] = int(args['det_info'][0]) # number of pixels per edge
+    f.attrs['det_size'] = args['det_info'][1] # detector size in meters
+    f.attrs['det_distance'] = args['det_info'][2] # detector distance in meters
 
     f.close()
 
@@ -96,7 +105,7 @@ def simulate_images(args):
     exp = setup_experiment(args)
     for num in range(args['n_images']):
         img = exp.generate_image_stack(return_intensities=True)
-        data["intensities"][num,:,:,:] = img
+        data["intensities"][num,:,:,:] = img / exp.det.polarization_correction / exp.det.solid_angle_per_pixel
 
     data["orientations"] = exp._orientations # quaternions
     data['reciprocal_extent'] = np.linalg.norm(exp.det.pixel_position_reciprocal, axis=-1).max() # max |s|
