@@ -31,11 +31,12 @@ def gen_nonuniform_positions(orientations, pixel_position_reciprocal):
 
 def core_problem_convolution(uvect, M, F_ugrid_conv_, M_ups, ac_support, use_recip_sym=True):
     """
-    Convolve data vector and input kernel in upsampled regime. (?)
+    Convolve data vector and input kernel of where data sample reciprocal 
+    space in upsampled regime.
     
     :param uvect: data vector on uniform grid, flattened
     :param M: length of data vector along each axis
-    :param F_ugrid_conv_: Fourier transform of convolution array
+    :param F_ugrid_conv_: Fourier transform of convolution sampling array
     :param M_ups: length of data vector along each axis when upsampled
     :param ac_support: 2d support object for autocorrelation
     :param use_recip_sym: if True, discard imaginary componeent
