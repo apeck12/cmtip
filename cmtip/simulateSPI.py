@@ -71,7 +71,7 @@ def simulate_writeh5(args):
     imgs = f.create_dataset("intensities", shape=((args['n_images'],) + exp.det.shape))
     for num in range(args['n_images']):
         img = exp.generate_image_stack(return_intensities=True)
-        imgs[num,:,:,:] = img / exp.det.polarization_correction / exp.det.solid_angle_per_pixel
+        imgs[num,:,:,:] = img / exp.det.polarization_correction / exp.det.solid_angle_per_pixel / 1e6 # scale to stay within nufft bounds
 
     # save useful attributes
     f.attrs['reciprocal_extent'] = np.linalg.norm(exp.det.pixel_position_reciprocal, axis=-1).max() # max |s|
@@ -105,7 +105,7 @@ def simulate_images(args):
     exp = setup_experiment(args)
     for num in range(args['n_images']):
         img = exp.generate_image_stack(return_intensities=True)
-        data["intensities"][num,:,:,:] = img / exp.det.polarization_correction / exp.det.solid_angle_per_pixel
+        data["intensities"][num,:,:,:] = img / exp.det.polarization_correction / exp.det.solid_angle_per_pixel / 1e6 # scale for nufft bounds
 
     data["orientations"] = exp._orientations # quaternions
     data['reciprocal_extent'] = np.linalg.norm(exp.det.pixel_position_reciprocal, axis=-1).max() # max |s|
