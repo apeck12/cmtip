@@ -23,10 +23,11 @@ def parse_input():
 
 def load_h5(input_file, load_ivol=False):
     """
-    Load h5 input file.
+    Load h5 input file of simulated data.
 
     :param input_file: input h5 file
-    :param data: dict containing contents of input h5 file
+    :param load_ivol: whether to load the diffraction volume, optional
+    :return data: dict containing contents of input h5 file
     """
     print("Loading data from %s" %input_file)  
     data = dict()

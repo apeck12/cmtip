@@ -1,7 +1,6 @@
 import numpy as np
 import mrcfile, h5py
 import skopi as sk
-import skopi.gpu as pg
 
 """
 Functions for visualizing results of phasing and comparing to reference.
@@ -74,6 +73,8 @@ def compute_reference(pdb_file, det_info, beam_file, M):
     :return ac: (M,M,M) array of the reference autocorrelation 
     :return density: (M,M,M) array of the reference density map
     """
+    import skopi.gpu as pg
+    
     # set up Particle object
     particle = sk.Particle()
     particle.read_pdb(pdb_file, ff='WK')
