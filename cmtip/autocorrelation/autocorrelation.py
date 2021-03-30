@@ -63,6 +63,28 @@ def core_problem_convolution(uvect, M, F_ugrid_conv_, M_ups, ac_support, use_rec
     return ugrid_conv_out.flatten()
 
 
+def gen_F_antisupport(M):
+    """
+    Generate an antisupport in Fourier space, which has zeros in the central
+    sphere and ones in the high-resolution corners. 
+    
+    :param M: length of the cubic antisupport volume
+    :return F_antisupport: volume that masks central region
+    """
+    # generate "antisupport" -- this has zeros in central sphere, 1s outside
+    lu = np.linspace(-np.pi, np.pi, M)
+    Hu_, Ku_, Lu_ = np.meshgrid(lu, lu, lu, indexing='ij')
+    Qu_ = np.sqrt(Hu_**2 + Ku_**2 + Lu_**2)
+    F_antisupport = Qu_ > np.pi 
+
+    assert np.all(F_antisupport == F_antisupport[::-1, :, :])
+    assert np.all(F_antisupport == F_antisupport[:, ::-1, :])
+    assert np.all(F_antisupport == F_antisupport[:, :, ::-1])
+    assert np.all(F_antisupport == F_antisupport[::-1, ::-1, ::-1])
+
+    return F_antisupport
+
+
 def fourier_reg(uvect, support, F_antisupport, M, use_recip_sym):
     """
     Generate the flattened matrix component that penalizes noise in the outer
@@ -113,19 +135,12 @@ def setup_linops(H, K, L, data,
     L_ = L.flatten() / reciprocal_extent * np.pi 
 
     # generate "antisupport" -- this has zeros in central sphere, 1s outside
-    lu = np.linspace(-np.pi, np.pi, M)
-    Hu_, Ku_, Lu_ = np.meshgrid(lu, lu, lu, indexing='ij')
-    Qu_ = np.sqrt(Hu_**2 + Ku_**2 + Lu_**2)
-    F_antisupport = Qu_ > np.pi 
-    assert np.all(F_antisupport == F_antisupport[::-1, :, :])
-    assert np.all(F_antisupport == F_antisupport[:, ::-1, :])
-    assert np.all(F_antisupport == F_antisupport[:, :, ::-1])
-    assert np.all(F_antisupport == F_antisupport[::-1, ::-1, ::-1])
+    F_antisupport = gen_F_antisupport(M) 
 
     # Using upsampled convolution technique instead of ADA
     M_ups = M * 2
     ugrid_conv = nufft.adjoint_cpu(np.ones_like(data), H_, K_, L_, 
-                                       M_ups, use_recip_sym=use_recip_sym, support=None)
+                                   M_ups, use_recip_sym=use_recip_sym, support=None)
     F_ugrid_conv_ = np.fft.fftn(np.fft.ifftshift(ugrid_conv)) #/ Mtot
 
     def W_matvec(uvect):
@@ -142,7 +157,7 @@ def setup_linops(H, K, L, data,
 
     nuvect_Db = data * weights
     uvect_ADb = nufft.adjoint_cpu(nuvect_Db, H_, K_, L_, M, 
-                                      support=ac_support, use_recip_sym=use_recip_sym).flatten()
+                                  support=ac_support, use_recip_sym=use_recip_sym).flatten()
     if np.sum(np.isnan(uvect_ADb)) > 0:
         print("Warning: nans in the adjoint calculation; intensities may be too large", flush=True)
     d = alambda*uvect_ADb + rlambda*x0
