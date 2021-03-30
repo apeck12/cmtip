@@ -1,1 +1,4 @@
-cmtip is a Python implementation of cartesian MTIP (multitiered iterative phasing). This repository is in some sense a next-generation spinifel.
+cmtip is a Python implementation of cartesian MTIP (multitiered iterative phasing), and in some sense a next-generation spinifel. The three main algorithmic components are:
+1. alignment, in which the orientations of images are deduced by comparison to references slices through the diffraction volume, which are computed from the estimated autocorrelation volume using the forward nonuniform FFT (NUFFT).
+2. solving for the autocorrelation, in which the autocorrelation volume is estimated by solving a sparse linear system that maximizes the consistency of the projected images with the intensity model. This component makes use of the adjoint NUFFT.
+3. phasing, in which rounds of hybrid-input output (HIO), error reduction (ER), and shrink-wrap are used to determine the density map from the oversampled autocorrelation volume. 
