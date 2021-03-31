@@ -86,3 +86,64 @@ def adjoint_gpu(nuvect, H_, K_, L_, M, use_recip_sym=True, support=None):
     return ugrid / (M**3)
 
 
+def adjoint_cpu_parallel(comm, nuvect, H_, K_, L_, M, use_recip_sym=True, support=None):
+    """
+    Interface for parallelizing the adjoint calculation across CPUs, by making use
+    of the fact that F(x+y) = F(x) + F(y), where F is the adjoint operation and the
+    signal x+y corresponds to the nonuniformly sampled diffraction data.
+
+    :param comm: MPI intracommunicator instance
+    :param nuvect: flattened data vector sampled in nonuniform space
+    :param H_: H dimension of reciprocal space position
+    :param K_: K dimension of reciprocal space position
+    :param L_: L dimension of reciprocal space position
+    :param M: cubic length of desired output array
+    :param support: 3d object support array
+    :param use_recip_sym: if True, discard imaginary component # name seems misleading
+    :return ugrid: Fourier transform of nuvect, sampled on a uniform grid
+    """
+    from mpi4py import MPI
+
+    size = comm.Get_size()
+    rank = comm.Get_rank()
+
+    if rank == 0:
+        # interleave data such that sets of [H,K,L,I] will be passed to each rank
+        d1 = np.vstack((H_, K_, L_, nuvect)).reshape((-1), order='F')
+        d1 = d1.astype(np.float64)
+
+        # determine splits for roughly equal batching, always divisible by 4
+        quot, remainder = divmod(len(d1), size*4)
+        split_size = int(quot) * 4 * np.ones(size).astype(int)
+        split_size[-1] += int(remainder)
+        split_disp = np.insert(np.cumsum(split_size), 0, 0)[0:-1].astype(int)
+
+        # generate output ac array
+        ugrid = np.zeros((M,M,M))
+
+    else:
+        # initialize variables on remaining cores; first for scatter, then for reduce
+        d1, split, split_size, split_disp = None, None, None, None
+        ugrid = None
+
+    # scatter batches across cores
+    split_size = comm.bcast(split_size, root = 0)
+    split_disp = comm.bcast(split_disp, root = 0)
+    d1_local = np.zeros(split_size[rank])
+    comm.Scatterv([d1, split_size, split_disp, MPI.DOUBLE], d1_local, root=0)
+
+    # reshape such that columns are [H, K, L, I] 
+    quot, remainder = divmod(len(d1_local), 4)
+    assert remainder == 0
+    d1_local = d1_local.reshape(quot, 4).astype(np.float32)
+
+    # compute partial adjoint and sum, converting to float64 for consistency with MPI.DOUBLE
+    adjoint_partial = adjoint_cpu(d1_local[:,3], d1_local[:,0], d1_local[:,1], d1_local[:,2], M)
+    adjoint_partial = adjoint_partial.astype(np.float64)
+
+    # synchronize cores and compute sum of batched adjoint calculations
+    comm.Barrier()
+    comm.Reduce([adjoint_partial, MPI.DOUBLE], [ugrid, MPI.DOUBLE], op=MPI.SUM, root=0)
+
+    return ugrid
+    
