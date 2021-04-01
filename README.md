@@ -6,3 +6,9 @@ cmtip is a Python implementation of cartesian MTIP (multitiered iterative phasin
 This repository was structured with modular testing in mind. Alignment and phasing accuracy can both be checked by supplying the ideal autocorrelation, while the autocorrelation solver can be checked by assuming ground truth orientations. At each iteration of the full pipeline, the estimated autocorrelation and density maps are saved as MRC files and the predicted orientations are saved to a numpy array. Acceleration has been achieved by parallelization through MPI. 
 
 Current dependencies are skopi, finufft, cufinufft, and mrcfile, all of which are available through pip install.
+
+Scripts have been provided for the simulation of a noise-free dataset and its reconstruction. For example, to simulate a 5k image dataset, one could run:
+$ python simulate.py -b ./examples/input/amo86615.beam -p ./examples/input/3iyf.pdb -d 512 0.08 0.2 -n 5000 -o 3iyf_sim.h5
+and to reconstruct on a single core:
+$ python reconstruct.py -i 3iyf_sim.h5 -o outdir -m 81 -n 10
+See docstrings for further information.
