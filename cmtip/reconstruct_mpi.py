@@ -18,6 +18,7 @@ def parse_input():
     parser.add_argument('-i', '--input', help='Input h5 file containing intensities and exp information.')
     parser.add_argument('-m', '--M', help='Cubic length of reconstruction volume', required=True, type=int)
     parser.add_argument('-o', '--output', help='Path to output directory', required=True, type=str)
+    parser.add_argument('-t', '--n_images', help='Total number of images to process', required=True, type=int)
     parser.add_argument('-n', '--niter', help='Number of MTIP iterations', required=False, type=int, default=10)
     parser.add_argument('-a', '--aligned', help='Alignment from reference quaternions', action='store_true')
 
@@ -99,13 +100,13 @@ def main():
     comm = MPI.COMM_WORLD
     rank = comm.rank
     size = comm.size
-    n_images_batch = int(5000 / size)
 
     # gather command line input and set up storage dictionary  
     args = parse_input()
     if rank == 0:
         if not os.path.isdir(args['output']):
             os.mkdir(args['output'])
+    n_images_batch = int(args['n_images'] / size)
 
     # reconstruct density from simulated diffraction images
     data = load_h5(args['input'], start=rank*n_images_batch, end=(rank+1)*n_images_batch)
