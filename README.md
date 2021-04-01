@@ -7,5 +7,8 @@ This repository was structured with modular testing in mind. Alignment and phasi
 
 Current dependencies are skopi, finufft, cufinufft, and mrcfile, all of which are available through pip install.
 
-Scripts have been provided for the simulation of a noise-free dataset and its reconstruction. For example, to simulate a 5k image dataset, one could run:\n$ python simulate.py -b ./examples/input/amo86615.beam -p ./examples/input/3iyf.pdb -d 512 0.08 0.2 -n 5000 -o 3iyf_sim.h5\nand to reconstruct on a single core:\n$ python reconstruct.py -i 3iyf_sim.h5 -o outdir -m 81 -n 10\n
+Scripts have been provided for the simulation of a noise-free dataset and its reconstruction. For example, to simulate a 5k image dataset, one could run:
+$ python simulate.py -b ./examples/input/amo86615.beam -p ./examples/input/3iyf.pdb -d 512 0.08 0.2 -n 5000 -o 3iyf_sim.h5
+and to reconstruct on a single core: $ python reconstruct.py -i 3iyf_sim.h5 -o outdir -m 81 -n 10
+
 See docstrings for further information.
