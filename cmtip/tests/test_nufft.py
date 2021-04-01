@@ -5,7 +5,7 @@ import numpy as np
 import skopi as sk
 import os
 
-from cmtip.simulateSPI import *
+from cmtip.simulate import *
 import cmtip.nufft as nufft
 
 class TestNUFFT(object):

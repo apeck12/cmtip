@@ -3,5 +3,6 @@ from .autocorrelation import *
 from .phasing import *
 from .nufft import *
 
-import cmtip.reconstructSPI
-import cmtip.simulateSPI
+import cmtip.reconstruct
+import cmtip.simulate
+import cmtip.prep_data
