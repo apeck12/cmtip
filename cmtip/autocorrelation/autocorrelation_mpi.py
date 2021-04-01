@@ -1,4 +1,3 @@
-from mpi4py import MPI
 import numpy as np
 from scipy.ndimage import gaussian_filter
 from scipy.sparse.linalg import LinearOperator, cg
@@ -7,6 +6,11 @@ from scipy.linalg import norm
 import skopi as sk
 import cmtip.autocorrelation as ac_base
 import cmtip.nufft as nufft
+
+try:
+    from mpi4py import MPI
+except ImportError:
+    print("MPI seems unavailable")
 
 def reduce_bcast(comm, vect):
     """

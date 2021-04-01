@@ -1,7 +1,10 @@
-from mpi4py import MPI
 import numpy as np
 import cmtip.phasing as phase_base
 
+try:
+    from mpi4py import MPI
+except ImportError:
+    print("MPI seems unavailable")
 
 def phase_mpi(comm, generation, ac, support_=None, rho_=None, n_iterations=10):
     """
