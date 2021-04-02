@@ -27,7 +27,7 @@ def parse_input():
 
 def run_mtip_mpi(comm, data, M, output, aligned=True, n_iterations=10):
     """
-    Run MTIP algorithm (though without orientation matching for now).
+    Run MTIP algorithm.
     
     :param comm: MPI intracommunicator instance
     :param data: dictionary containing images, pixel positions, orientations, etc.

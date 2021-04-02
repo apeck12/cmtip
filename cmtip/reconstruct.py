@@ -43,7 +43,7 @@ def save_output(generation, output, ac, rho_, orientations=None):
 
 def run_mtip(data, M, output, aligned=True, n_iterations=10):
     """
-    Run MTIP algorithm (though without orientation matching for now).
+    Run MTIP algorithm.
     
     :param data: dictionary containing images, pixel positions, orientations, etc.
     :param M: length of cubic autocorrelation volume
