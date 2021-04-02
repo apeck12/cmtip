@@ -11,7 +11,7 @@ Scripts have been provided for the simulation of a noise-free dataset and its re
 
 $ python simulate.py -b ./examples/input/amo86615.beam -p ./examples/input/3iyf.pdb -d 512 0.08 0.2 -n 5000 -o 3iyf_sim.h5
 
-and to reconstruct on a single core: 
+The simulation code requires a GPU. To reconstruct on a single CPU core: 
 
 $ python reconstruct.py -i 3iyf_sim.h5 -o outdir -m 81 -n 10
 
