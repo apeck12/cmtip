@@ -162,16 +162,19 @@ def shrink_wrap(cutoff, sigma, rho_, support_):
     support_[:] = rho_gauss_ > rho_abs_.max() * cutoff
 
     
-def phase(generation, ac, support_=None, rho_=None, n_iterations=10):
+def phase(generation, ac, support_=None, rho_=None, n_iterations=10, nER=50, nHIO=25):
     """
     Solve the phase problem from the oversampled autocorrelation by performing cycles
-    of ER, HIO, ER, and shrinkwrap. 
+    of ER, HIO, ER, and shrinkwrap. After n_iterations, one final run of nER cycles of 
+    ER is performed.
     
     :param generation: current iteration of M-TIP loop
     :param ac: 3d array of autocorrelation
     :param support_: initial object support
     :param rho_: initial density estimate
     :param n_iterations: number of cycles of ER/HIO/ER/shrinkwrap to perform
+    :param nER: number of ER iterations to perform for each ER loop
+    :param nHIO: number of HIO iterations to perofrm for each HIO loop
     :return ac_phased: updated autocorrelation estimate
     :return support_: updated support estimate
     :return rho_: updated density estimate
@@ -198,9 +201,6 @@ def phase(generation, ac, support_=None, rho_=None, n_iterations=10):
         rho_ = support_ * np.random.rand(*support_.shape)
 
     rho_max = np.infty
-
-    nER = 10 
-    nHIO = 5 
 
     for i in range(n_iterations):
         ER_loop(nER, rho_, amplitudes_, amp_mask_, support_, rho_max)
