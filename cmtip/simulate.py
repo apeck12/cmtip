@@ -4,9 +4,9 @@ import skopi as sk
 import h5py
 
 """
-Simulate an ultra-simple SPI datasets on a SimpleSquare detector and without any errors,
-including quantization. The images returned are of the scattered intensities, corrected
-for polarization and solid angle.
+Simulate an ultra-simple SPI dataset on either a SimpleSquare or LCLSDetector. 
+The images contain the intensity information, corrected for polarization and 
+solid angle, but without quantization.
 """
 
 def parse_input():
@@ -16,8 +16,9 @@ def parse_input():
     parser = argparse.ArgumentParser(description="Simulate a simple SPI dataset.")
     parser.add_argument('-b', '--beam_file', help='Beam file', required=True, type=str)
     parser.add_argument('-p', '--pdb_file', help='Pdb file', required=True, type=str)
-    parser.add_argument('-d', '--det_info', help='SimpleSquare detector settings: n_pixels, length, distance',
-                        required=False, nargs=3, type=float)
+    parser.add_argument('-d', '--det_info', help='Detector info. Either (n_pixels, length, distance) for SimpleSquare'+
+                        'or (det_type, geom_file, distance) for LCLSDetectors. det_type could be pnccd, for instance',
+                        required=True, nargs=3)
     parser.add_argument('-n', '--n_images', help='Number of slices to compute', required=True, type=int)
     parser.add_argument('-o', '--output', help='Path to output directory', required=False, type=str)
 
@@ -39,8 +40,17 @@ def setup_experiment(args, increase_factor=1):
     particle = sk.Particle()
     particle.read_pdb(args['pdb_file'], ff='WK')
 
-    n_pixels, det_size, det_dist = args['det_info']
-    det = sk.SimpleSquareDetector(int(n_pixels), det_size, det_dist, beam=beam)     
+    if args['det_info'][0].isdigit():
+        n_pixels, det_size, det_dist = args['det_info']
+        det = sk.SimpleSquareDetector(int(n_pixels), float(det_size), float(det_dist), beam=beam) 
+    elif args['det_info'][0] == 'pnccd':
+        det = sk.PnccdDetector(geom=args['det_info'][1])
+        det.distance = float(args['det_info'][2])
+    elif args['det_info'][0] == 'cspad':
+        det = sk.PnccdDetector(geom=args['det_info'][1])
+        det.distance = float(args['det_info'][2])
+    else:
+        print("Detector type not recognized. Must be pnccd, cspad, or SimpleSquare.")
     
     exp = sk.SPIExperiment(det, beam, particle)
     exp.set_orientations(sk.get_random_quat(args['n_images']))
@@ -51,7 +61,6 @@ def setup_experiment(args, increase_factor=1):
 def simulate_writeh5(args):
     """
     Simulate diffraction images and save to h5 file.
-
     :param args: dictionary of command line input
     """
     print("Simulating diffraction images")
@@ -76,9 +85,9 @@ def simulate_writeh5(args):
     # save useful attributes
     f.attrs['reciprocal_extent'] = np.linalg.norm(exp.det.pixel_position_reciprocal, axis=-1).max() # max |s|
     f.attrs['n_images'] = args['n_images'] # number of simulated shots
-    f.attrs['n_pixels'] = int(args['det_info'][0]) # number of pixels per edge
-    f.attrs['det_size'] = args['det_info'][1] # detector size in meters
-    f.attrs['det_distance'] = args['det_info'][2] # detector distance in meters
+    f.attrs['n_pixels_per_image'] = exp.det.pixel_num_total # number of total pixels per image
+    f.attrs['det_shape'] = exp.det.shape # detector shape (n_panels, panel_num_x, panel_num_y)
+    f.attrs['det_distance'] = float(args['det_info'][2]) # detector distance in meters
 
     f.close()
 
@@ -91,29 +100,37 @@ def simulate_writeh5(args):
 def simulate_images(args):
     """
     Simulate diffraction images and return information needed to run M-TIP.
-
     :param args: dictionary of command line input
     :return data: dictionary of information needed to run M-TIP
     """
     print("Simulating diffraction images")
     start_time = time.time()
 
-    n_pixels = int(args['det_info'][0])
-    data = dict()
-    data['intensities'] = np.zeros((args['n_images'],) + (1,n_pixels,n_pixels))
-
+    # set up experiment
     exp = setup_experiment(args)
+    
+    # generate data dictionary
+    data = dict()
+    data['intensities'] = np.zeros((args['n_images'],) + exp.det.shape)
+
+    # simulate shots
     for num in range(args['n_images']):
         img = exp.generate_image_stack(return_intensities=True)
         data["intensities"][num,:,:,:] = img / exp.det.polarization_correction / exp.det.solid_angle_per_pixel / 1e6 # scale for nufft bounds
 
+    # populate rest of dictionary
     data["orientations"] = exp._orientations # quaternions
     data['reciprocal_extent'] = np.linalg.norm(exp.det.pixel_position_reciprocal, axis=-1).max() # max |s|
     data['pixel_position_reciprocal'] = np.moveaxis(exp.det.pixel_position_reciprocal, -1, 0) # s-vectors in m-1
     data['n_images'] = args['n_images'] # number of simulated shots
-    data['n_pixels'] = n_pixels # square length of detector
+    data['n_pixels_per_image'] = exp.det.pixel_num_total # number of total pixels per image
     data['volume'] = exp.volumes[0] # reciprocal space volume
     data['pixel_index_map'] = exp.det.pixel_index_map # indexing map for reassembly
+    data['det_shape'] = exp.det.shape # detector shape (n_panels, panel_num_x, panel_num_y)
+
+    # flatten intensities and pixel_position_reciprocal arrays
+    data['intensities'] = data['intensities'].reshape(args['n_images'],1,exp.det.pixel_num_total)
+    data['pixel_position_reciprocal'] = data['pixel_position_reciprocal'].reshape(3,1,exp.det.pixel_num_total)
 
     print("elapsed time is %.2f" %((time.time() - start_time)/60.0))
     return data

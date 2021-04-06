@@ -7,7 +7,7 @@ from mpi4py import MPI
 import cmtip.alignment as alignment
 from cmtip.prep_data import load_h5, clip_data
 from cmtip.reconstruct import save_output
-import cmtip.phasing as phaser
+from cmtip.phasing import phase_mpi as phaser
 from cmtip.autocorrelation import autocorrelation_mpi as autocorrelation
 
 def parse_input():
@@ -41,7 +41,7 @@ def run_mtip_mpi(comm, data, M, output, aligned=True, n_iterations=10):
     rank = comm.rank
     
     # alignment parameters
-    nclip, n_ref = 144, 3000
+    n_ref, res_limit = 2500, 20
 
     # iteration 0: ac_estimate is unknown
     generation = 0
@@ -65,8 +65,11 @@ def run_mtip_mpi(comm, data, M, output, aligned=True, n_iterations=10):
     for generation in range(1, n_iterations):
         # align slices using clipped data
         if not aligned:
-            pixel_position_reciprocal = clip_data(data['pixel_position_reciprocal'], nclip)
-            intensities = clip_data(data['intensities'], nclip)
+            pixel_position_reciprocal = clip_data(data['pixel_position_reciprocal'], 
+                                                  data['pixel_position_reciprocal'],
+                                                  res_limit)
+            intensities = clip_data(data['intensities'], 
+                                    data['pixel_position_reciprocal'], res_limit)
             orientations = alignment.match_orientations(generation,
                                                         pixel_position_reciprocal,
                                                         data['reciprocal_extent'],
