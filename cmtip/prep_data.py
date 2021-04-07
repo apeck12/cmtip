@@ -79,9 +79,9 @@ def clip_data(arr, pixel_position_reciprocal, res_limit):
     return c_arr
 
 
-def bin_data_series(arr, bin_factor, det_shape):
+def bin_data(arr, bin_factor, det_shape):
     """
-    Bin flattened detector data by bin_factor by averaging. 
+    Bin flattened detector data by bin_factor through averaging. 
     
     :param arr: array shape (n_images, n_panels, panel_shape_x, panel_shape_y)
       or if det_shape is given of shape (n_images, 1, n_pixels_per_image) 
