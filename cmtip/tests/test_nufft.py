@@ -18,7 +18,7 @@ class TestNUFFT(object):
         args = dict()
         args['beam_file'] = os.path.join(os.path.dirname(__file__), '../../examples/input/amo86615.beam')
         args['pdb_file'] = os.path.join(os.path.dirname(__file__), '../../examples/input/3iyf.pdb')
-        args['det_info'] = (128, 0.08, 0.2)
+        args['det_info'] = ("128", "0.08", "0.2")
         args['n_images'] = 1
         
         data = simulate_images(args)

@@ -55,14 +55,14 @@ def compute_slices(orientations, pixel_position_reciprocal, reciprocal_extent, a
     Compute slices through the diffraction volume estimated from the autocorrelation.
     
     :param orientations: array of quaternions
-    :param pixel_position_reciprocal: pixels' reciprocal space positions, array of shape
+    :param pixel_position_reciprocal: pixels' reciprocal space positions
     :param reciprocal_extent: reciprocal space magnitude of highest resolution pixel
     :param ac: 3d array of autocorrelation
     :return model_slices: flattened array of requested model slices
     """
     # compute rotated reciprocal space positions
     rotmat = np.array([np.linalg.inv(sk.quaternion2rot3d(quat)) for quat in orientations])
-    H, K, L = np.einsum("ijk,klmn->jilmn", rotmat, pixel_position_reciprocal)
+    H, K, L = np.einsum("ijk,klm->jilm", rotmat, pixel_position_reciprocal)
 
     # scale and change type for compatibility with finufft
     H_ = H.astype(np.float32).flatten() / reciprocal_extent * np.pi 
@@ -89,9 +89,9 @@ def match_orientations(generation,
     
     :param generation: current iteration
     :param pixel_position_reciprocal: pixels' reciprocal space positions, array of shape
-        (3,n_panels,panel_pixel_num_x,panel_pixel_num_y)
+        (3,n_panels,n_pixels_per_panel)
     :param reciprocal_extent: reciprocal space magnitude of highest resolution pixel
-    :param slices_: intensity data of shape (n_images, n_panels, panel_pixel_num_x, panel_pixel_num_y)
+    :param slices_: intensity data of shape (n_images,n_panels,n_pixels_per_panel)
     :param ac: 3d array of estimated autocorrelation
     :param n_ref_orientations: number of reference orientations to compute from autocorrelation
     :param true_orientations: quaternion orientations of slices_, used for debugging
@@ -99,7 +99,7 @@ def match_orientations(generation,
     """
     
     # generate reference images by slicing through autocorrelation
-    n_det_pixels = np.prod(np.array(slices_.shape[2:])) 
+    n_det_pixels = pixel_position_reciprocal.shape[-1]
     ref_orientations = sk.get_uniform_quat(n_ref_orientations, True).astype(np.float32)
     
     model_slices = compute_slices(ref_orientations, pixel_position_reciprocal, reciprocal_extent, ac)

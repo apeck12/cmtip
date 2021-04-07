@@ -5,9 +5,10 @@ import h5py
 from mpi4py import MPI
 
 import cmtip.alignment as alignment
-from cmtip.prep_data import load_h5, clip_data
+from cmtip.prep_data import load_h5, clip_data, bin_data
 from cmtip.reconstruct import save_output
-import cmtip.phasing as phaser
+from cmtip.phasing import phase_mpi as phaser
+from cmtip.phasing import maps
 from cmtip.autocorrelation import autocorrelation_mpi as autocorrelation
 
 def parse_input():
@@ -20,6 +21,7 @@ def parse_input():
     parser.add_argument('-o', '--output', help='Path to output directory', required=True, type=str)
     parser.add_argument('-t', '--n_images', help='Total number of images to process', required=True, type=int)
     parser.add_argument('-n', '--niter', help='Number of MTIP iterations', required=False, type=int, default=10)
+    parser.add_argument('-b', '--bin_factor', help='Factor by which to bin data', required=False, type=int, default=1)
     parser.add_argument('-a', '--aligned', help='Alignment from reference quaternions', action='store_true')
 
     return vars(parser.parse_args())
@@ -41,7 +43,7 @@ def run_mtip_mpi(comm, data, M, output, aligned=True, n_iterations=10):
     rank = comm.rank
     
     # alignment parameters
-    nclip, n_ref = 144, 3000
+    n_ref, res_limit = 2500, 20
 
     # iteration 0: ac_estimate is unknown
     generation = 0
@@ -65,8 +67,11 @@ def run_mtip_mpi(comm, data, M, output, aligned=True, n_iterations=10):
     for generation in range(1, n_iterations):
         # align slices using clipped data
         if not aligned:
-            pixel_position_reciprocal = clip_data(data['pixel_position_reciprocal'], nclip)
-            intensities = clip_data(data['intensities'], nclip)
+            pixel_position_reciprocal = clip_data(data['pixel_position_reciprocal'], 
+                                                  data['pixel_position_reciprocal'],
+                                                  res_limit)
+            intensities = clip_data(data['intensities'], 
+                                    data['pixel_position_reciprocal'], res_limit)
             orientations = alignment.match_orientations(generation,
                                                         pixel_position_reciprocal,
                                                         data['reciprocal_extent'],
@@ -108,8 +113,15 @@ def main():
             os.mkdir(args['output'])
     n_images_batch = int(args['n_images'] / size)
 
-    # reconstruct density from simulated diffraction images
+    # load subset of data onto each rank and bin if requested
     data = load_h5(args['input'], start=rank*n_images_batch, end=(rank+1)*n_images_batch)
+    if args['bin_factor']!=1:
+        for key in ['intensities', 'pixel_position_reciprocal']:
+            data[key] = bin_data(data[key], args['bin_factor'], data['det_shape'])
+            data[key] = data[key].reshape((data[key].shape[0],1) + (np.prod(np.array(data[key].shape[1:])),))
+        data['reciprocal_extent'] = np.linalg.norm(data['pixel_position_reciprocal'], axis=0).max()
+
+    # run MTIP to reconstruct density from simulated diffraction images
     run_mtip_mpi(comm, data, args['M'], args['output'], aligned=args['aligned'], n_iterations=args['niter'])
 
 

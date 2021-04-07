@@ -18,7 +18,7 @@ class TestAlignment(object):
         args = dict()
         args['beam_file'] = os.path.join(os.path.dirname(__file__), '../../examples/input/amo86615.beam')
         args['pdb_file'] = os.path.join(os.path.dirname(__file__), '../../examples/input/3iyf.pdb')
-        args['det_info'] = (128, 0.08, 0.2)
+        args['det_info'] = ("128", "0.08", "0.2")
         args['n_images'] = 3
         
         cls.data = simulate_images(args)
@@ -50,7 +50,7 @@ class TestAlignment(object):
                                            self.data['pixel_position_reciprocal'], 
                                            self.data['reciprocal_extent'], 
                                            self.ac)
-        cslices = cslices.reshape(len(self.data['orientations']), np.square(self.data['n_pixels']))
+        cslices = cslices.reshape(len(self.data['orientations']), self.data['n_pixels_per_image'])
         
         cc_vals = list()
         for i in range(3):
@@ -65,10 +65,10 @@ class TestAlignment(object):
         f, ((ax1,ax2,ax3), (ax4,ax5,ax6)) = plt.subplots(2,3,figsize=(9,6))
 
         for i,ax in enumerate([ax1,ax2,ax3]):
-            ax.imshow(cslices[i].reshape(self.data['n_pixels'],self.data['n_pixels']), vmax=cslices.mean())
+            ax.imshow(cslices[i].reshape(self.data['det_shape'][1:]), vmax=cslices.mean())
             ax.set_title("Orientation %i" %i, fontsize=12)
         for i,ax in enumerate([ax4,ax5,ax6]):
-            ax.imshow(self.data['intensities'][i][0], vmax=self.data['intensities'].mean())
+            ax.imshow(self.data['intensities'][i][0].reshape(self.data['det_shape'][1:]), vmax=self.data['intensities'].mean())
 
         for ax in [ax1,ax2,ax3,ax4,ax5,ax6]:
             ax.set_xticks([])

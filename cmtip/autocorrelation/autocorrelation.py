@@ -24,7 +24,7 @@ def gen_nonuniform_positions(orientations, pixel_position_reciprocal):
         rotmat = np.array([np.linalg.inv(sk.quaternion2rot3d(quat)) for quat in orientations])
     else:
         rotmat = np.array([np.eye(3)]) # changed
-    H, K, L = np.einsum("ijk,klmn->jilmn", rotmat, pixel_position_reciprocal)
+    H, K, L = np.einsum("ijk,klm->jilm", rotmat, pixel_position_reciprocal)
     # shape -> [N_images] x det_shape
     return H, K, L
 

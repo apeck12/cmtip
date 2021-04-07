@@ -55,7 +55,7 @@ def run_mtip(data, M, output, aligned=True, n_iterations=10):
     start_time = time.time()
     
     # alignment parameters
-    nclip, n_ref = 144, 3000
+    n_ref, res_limit = 2500, 20
 
     # iteration 0: ac_estimate is unknown
     generation = 0
@@ -77,8 +77,11 @@ def run_mtip(data, M, output, aligned=True, n_iterations=10):
     for generation in range(1, n_iterations):
         # align slices using clipped data
         if not aligned:
-            pixel_position_reciprocal = clip_data(data['pixel_position_reciprocal'], nclip)
-            intensities = clip_data(data['intensities'], nclip)
+            pixel_position_reciprocal = clip_data(data['pixel_position_reciprocal'],
+                                                  data['pixel_position_reciprocal'],
+                                                  res_limit)
+            intensities = clip_data(data['intensities'],
+                                    data['pixel_position_reciprocal'], res_limit)
             orientations = alignment.match_orientations(generation,
                                                         pixel_position_reciprocal,
                                                         data['reciprocal_extent'],

@@ -33,7 +33,10 @@ def _retrieve_det_info(h5_file):
     :return det_info: tuple of (n_pixels, det_size, det_distance) 
     """
     with h5py.File(h5_file, 'r') as f:
-        n_pixels = f.attrs['n_pixels']
+        try:
+            n_pixels = f.attrs['n_pixels']
+        except:
+            n_pixels = int(np.sqrt(f.attrs['n_pixels_per_image']))
         det_size = f.attrs['det_size']
         det_distance = f.attrs['det_distance']
     
@@ -55,8 +58,10 @@ def _setup_detector(det_info, beam_file):
     # instantiate Detector
     if type(det_info) is not tuple:
         det_info = _retrieve_det_info(det_info)
-    det = sk.SimpleSquareDetector(det_info[0], det_info[1], det_info[2], beam=beam) 
-
+    det = sk.SimpleSquareDetector(int(det_info[0]), 
+                                  float(det_info[1]), 
+                                  float(det_info[2]), 
+                                  beam=beam) 
     return det
     
 
