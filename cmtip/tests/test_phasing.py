@@ -12,6 +12,7 @@ from scipy.ndimage import gaussian_filter
 class TestPhase(object):
     """
     Test the phasing algorithm starting from the ideal autocorrelation.
+    In this case, different handedness will be indistinguishable in projection.
     """
     
     @classmethod

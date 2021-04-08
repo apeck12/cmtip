@@ -12,6 +12,11 @@ try:
 except ImportError:
     print("MPI seems unavailable")
 
+"""
+MPI version of the autocorrelation solver. Functions of this component of the MTIP algorithm
+that do not require communication among ranks are called from the main autocorrelation script.
+"""
+
 def reduce_bcast(comm, vect):
     """
     Compute sum of input vect (ugrid_conv) from all ranks and broadcast.
@@ -85,14 +90,14 @@ def setup_linops_mpi(comm, H, K, L, data, ac_support, weights, x0,
 def solve_ac_mpi(comm, generation, pixel_position_reciprocal, reciprocal_extent,
                  slices_, M, orientations=None, ac_estimate=None, use_recip_sym=True):
     """
-    Estimate the autocorrelation volume using MPI.
+    Estimate the autocorrelation volume using MPI. 
     
     :param comm: MPI intracommunicator instance
     :param generation: current iteration
     :param pixel_position_reciprocal: pixels' reciprocal space positions, array of shape
-        (3,n_panels,panel_pixel_num_x,panel_pixel_num_y)
+        (3,n_panels,n_pixels_per_panel)
     :param reciprocal_extent: reciprocal space magnitude of highest resolution pixel
-    :param slices_: intensity data of shape (n_images, n_panels, panel_pixel_num_x, panel_pixel_num_y)
+    :param slices_: intensity data of shape (n_images, n_panels, n_pixels_per_panel)
     :param M: cubic length of autocorrelation mesh
     :param orientations: n_images quaternions, if available
     :param ac_estimate: 3d array of estimated autocorrelation, if available

@@ -18,7 +18,7 @@ def gen_nonuniform_positions(orientations, pixel_position_reciprocal):
     :param orientations: array of quaternions of shape (N_images, 4)
     :param pixel_position_reciprocal: array of pixels' reciprocal space vectors
     :return H,K,L: rotated reciprocal space vectors, each of shape 
-        (N_images, n_panels,panel_pixel_num_x,panel_pixel_num_y)
+        (n_images,n_panels,n_pixels_per_panel) -- fine if multi-panel is reshaped to monolithic
     """
     if orientations.shape[0] > 0:
         rotmat = np.array([np.linalg.inv(sk.quaternion2rot3d(quat)) for quat in orientations])
@@ -175,13 +175,14 @@ def solve_ac(generation,
              use_recip_sym=True):
     """
     Estimate the autocorrelation by solving a sparse linear system that maximizes the 
-    consistency of the projected images with the intensity model.
+    consistency of the projected images with the intensity model. Note that upstream
+    multi-panel data are generally reshaped to mimic a monolithic detector.
     
     :param generation: current iteration
     :param pixel_position_reciprocal: pixels' reciprocal space positions, array of shape
-        (3,n_panels,panel_pixel_num_x,panel_pixel_num_y)
+        (3,n_panels,n_pixels_per_panel)
     :param reciprocal_extent: reciprocal space magnitude of highest resolution pixel
-    :param slices_: intensity data of shape (n_images, n_panels, panel_pixel_num_x, panel_pixel_num_y)
+    :param slices_: intensity data of shape (n_images, n_panels, n_pixels_per_panel)
     :param M: cubic length of autocorrelation mesh
     :param orientations: n_images quaternions, if available
     :param ac_estimate: 3d array of estimated autocorrelation, if available
