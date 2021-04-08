@@ -86,6 +86,7 @@ def bin_data(arr, bin_factor, det_shape):
     :param arr: array shape (n_images, n_panels, panel_shape_x, panel_shape_y)
       or if det_shape is given of shape (n_images, 1, n_pixels_per_image) 
     :param bin_factor: how may fold to bin arr by
+    :param det_shape: tuple of detector shape, optional
     :return arr_binned: binned data of same dimensions as arr
     """
     # reshape as needed
