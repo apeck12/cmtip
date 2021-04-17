@@ -62,6 +62,59 @@ def load_h5(input_file, start=0, end=None, load_ivol=False):
     return data
 
 
+def trim_dataset(pixel_index_map, pixel_position_reciprocal, intensities, det_shape, res_limit):
+    """
+    Trim data such that the corner pixel of images has the desired resolution.
+    
+    :param pixel_index_map: pixel index map of shape (n_panels, n_pixels_x, n_pixels_y, 2)
+    :param pixel_position_reciprocal: reciprocal space positions of each pixel, of 
+        shape (3, n_panels, n_pixels_per_image) in meters
+    :param intensities: intensity data of shape (n_images, n_panels, n_pixels_per_image)
+    :param det_shape: shape of detector (n_panels, n_pixels_x, n_pixels_y)
+    :param res_limit: maximum resolution (corner pixel) to retain
+        if 0, then data are returned untrimmed
+    :return pixel_position_reciprocal: trimmed reciprocal space positions 
+    :return intensities: trimmed intensity data
+    """
+    if res_limit==0:
+        return pixel_position_reciprocal, intensities
+
+    else:
+        # assemble into detector shape
+        intensities = intensities.reshape((intensities.shape[0],) + det_shape)
+        mask = np.expand_dims(np.ones_like(intensities[0]), axis=0)
+        mask = assemble_image_stack_batch(mask, pixel_index_map)
+        intensities = assemble_image_stack_batch(intensities, pixel_index_map)
+        pixel_position_reciprocal = pixel_position_reciprocal.reshape((3,) + det_shape)
+        pixel_position_reciprocal = assemble_image_stack_batch(pixel_position_reciprocal, 
+                                                               pixel_index_map)
+
+        # get assembled image shape and determine how many pixels to keep for res_limit
+        assembled_shape = np.array([pixel_index_map[:,:,:,0].max()+1, 
+                                    pixel_index_map[:,:,:,1].max()+1])
+        center = np.array(0.5*assembled_shape).astype(int)
+        
+        # figure out correspondence between image dimension and resolution
+        min_pix = 20
+        img_width = range(min_pix,np.min(center))
+        norms = np.linalg.norm(pixel_position_reciprocal, axis=0)
+        res = np.array([1e10/norms[center[0]-i, center[1]-i] for i in img_width])
+        nkeep = np.argmin(np.abs(res - res_limit)) + min_pix
+        
+        # trim data to requested resolution
+        intensities = intensities[:,center[0]-nkeep:center[0]+nkeep,center[1]-nkeep:center[1]+nkeep]
+        mask = mask[:,center[0]-nkeep:center[0]+nkeep,center[1]-nkeep:center[1]+nkeep]
+        pixel_position_reciprocal = pixel_position_reciprocal[:,center[0]-nkeep:center[0]+nkeep,center[1]-nkeep:center[1]+nkeep]
+
+        # disassemble images: flatten and remove masked regions
+        intensities = intensities[:,np.where(mask==1)[1],np.where(mask==1)[2]]
+        pixel_position_reciprocal = pixel_position_reciprocal[:,np.where(mask==1)[1],np.where(mask==1)[2]]
+        intensities = np.expand_dims(intensities, axis=1)
+        pixel_position_reciprocal = np.expand_dims(pixel_position_reciprocal, axis=1)
+
+        return pixel_position_reciprocal, intensities
+
+
 def clip_data(arr, pixel_position_reciprocal, res_limit):
     """
     Clip each image in a series of images such that any pixels beyond
@@ -79,9 +132,31 @@ def clip_data(arr, pixel_position_reciprocal, res_limit):
     return c_arr
 
 
-def bin_data(arr, bin_factor, det_shape):
+def clip_dataset(pixel_position_reciprocal, intensities, res_limit):
     """
-    Bin flattened detector data by bin_factor through averaging. 
+    Clip reciprocal space positions and intensities to requested resolution.
+    In contrast to the trim_dataset function, the retained data will fall in a 
+    sphere rather than coming from square detector images. This is a wrapper
+    for the clip_data function.
+    
+    :param intensities: array of images of shape (n_images, n_panels, n_pixels_per_image)
+    :param pixel_position_reciprocal: reciprocal space positions of each pixel, of 
+        shape (3, n_panels, n_pixels_per_image) in meters
+    :param res_limit: highest resolution pixel to keep in Angstrom
+    :return pixel_position_reciprocal: clipped reciprocal space positions
+    :return intensities: clipped intensity images
+    """
+    intensities = clip_data(intensities, pixel_position_reciprocal, res_limit)
+    pixel_position_reciprocal = clip_data(pixel_position_reciprocal, 
+                                          pixel_position_reciprocal,
+                                          res_limit)
+    
+    return pixel_position_reciprocal, intensities
+
+
+def bin_data(arr, bin_factor, det_shape=None):
+    """
+    Bin detector data by bin_factor through averaging. 
     
     :param arr: array shape (n_images, n_panels, panel_shape_x, panel_shape_y)
       or if det_shape is given of shape (n_images, 1, n_pixels_per_image) 
@@ -104,7 +179,27 @@ def bin_data(arr, bin_factor, det_shape):
                              bin_factor,
                              int(arr.shape[3] / bin_factor),
                              bin_factor).mean(-1).mean(3)
+
+    # if input data were flattened, reflatten
+    if det_shape is not None:
+        binned_arr = binned_arr.reshape((binned_arr.shape[0],1) + (np.prod(np.array(binned_arr.shape[1:])),))
     return binned_arr
+
+
+def bin_pixel_index_map(arr, bin_factor):
+    """
+    Bin pixel_index_map by bin factor.
+    
+    :param arr: pixel_index_map of shape (n_panels, panel_shape_x, panel_shape_y, 2)
+    :param bin_factor: how may fold to bin arr by
+    :return binned_arr: binned pixel_index_map of same dimensions as arr
+    """
+    arr = np.moveaxis(arr, -1, 0)
+    arr = np.minimum(arr[..., ::bin_factor, :], arr[..., 1::bin_factor, :])
+    arr = np.minimum(arr[..., ::bin_factor], arr[..., 1::bin_factor])
+    arr = arr // bin_factor
+    
+    return np.moveaxis(arr, 0, -1)
 
 
 def assemble_image_stack_batch(image_stack, index_map):
