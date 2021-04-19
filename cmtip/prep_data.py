@@ -80,6 +80,12 @@ def trim_dataset(pixel_index_map, pixel_position_reciprocal, intensities, det_sh
         return pixel_position_reciprocal, intensities
 
     else:
+        # if requested resolution exceeds maximum data resolution, return all data
+        data_max_res = 1e10/np.linalg.norm(pixel_position_reciprocal, axis=0).max()
+        if res_limit < data_max_res:
+            print ("Warning: requested resolution exceeds data resolution.")
+            return pixel_position_reciprocal, intensities
+
         # assemble into detector shape
         intensities = intensities.reshape((intensities.shape[0],) + det_shape)
         mask = np.expand_dims(np.ones_like(intensities[0]), axis=0)
@@ -146,6 +152,9 @@ def clip_dataset(pixel_position_reciprocal, intensities, res_limit):
     :return pixel_position_reciprocal: clipped reciprocal space positions
     :return intensities: clipped intensity images
     """
+    if res_limit==0:
+        return pixel_position_reciprocal, intensities
+
     intensities = clip_data(intensities, pixel_position_reciprocal, res_limit)
     pixel_position_reciprocal = clip_data(pixel_position_reciprocal, 
                                           pixel_position_reciprocal,
