@@ -5,11 +5,12 @@ import h5py
 from mpi4py import MPI
 
 import cmtip.alignment as alignment
-from cmtip.prep_data import load_h5, clip_data, bin_data
+from cmtip.prep_data import *
 from cmtip.reconstruct import save_output
 from cmtip.phasing import phase_mpi as phaser
 from cmtip.phasing import maps
 from cmtip.autocorrelation import autocorrelation_mpi as autocorrelation
+
 
 def parse_input():
     """
@@ -21,13 +22,15 @@ def parse_input():
     parser.add_argument('-o', '--output', help='Path to output directory', required=True, type=str)
     parser.add_argument('-t', '--n_images', help='Total number of images to process', required=True, type=int)
     parser.add_argument('-n', '--niter', help='Number of MTIP iterations', required=False, type=int, default=10)
+    parser.add_argument('-r', '--res_limit_ac', help='Resolution limit for solving AC at each iteration, overrides niter', 
+                        required=False, nargs='+', type=int)
     parser.add_argument('-b', '--bin_factor', help='Factor by which to bin data', required=False, type=int, default=1)
     parser.add_argument('-a', '--aligned', help='Alignment from reference quaternions', action='store_true')
 
     return vars(parser.parse_args())
 
 
-def run_mtip_mpi(comm, data, M, output, aligned=True, n_iterations=10):
+def run_mtip_mpi(comm, data, M, output, aligned=True, n_iterations=10, res_limit_ac=None):
     """
     Run MTIP algorithm.
     
@@ -37,13 +40,16 @@ def run_mtip_mpi(comm, data, M, output, aligned=True, n_iterations=10):
     :param output: path to output directory
     :param aligned: if False use ground truth quaternions
     :param n_iterations: number of MTIP iterations to run, default=10
+    :param res_limit_ac: resolution limit to which to solve AC at each iteration. if None use full res.
     """  
     print("Running MTIP")
     start_time = time.time()
     rank = comm.rank
     
-    # alignment parameters
-    n_ref, res_limit = 2500, 20
+    # parameters
+    n_ref, res_limit = 2000, 15
+    if res_limit_ac is None:
+        res_limit_ac = np.zeros(n_iterations)
 
     # iteration 0: ac_estimate is unknown
     generation = 0
@@ -52,11 +58,20 @@ def run_mtip_mpi(comm, data, M, output, aligned=True, n_iterations=10):
         print("Using ground truth quaternions")
         orientations = data['orientations']
 
+    # clip resolution
+    pixel_position_reciprocal, intensities = trim_dataset(data['pixel_index_map'], 
+                                                          data['pixel_position_reciprocal'], 
+                                                          data['intensities'], 
+                                                          data['det_shape'], 
+                                                          res_limit_ac[generation])
+    reciprocal_extent = np.linalg.norm(pixel_position_reciprocal, axis=0).max()
+    print(f"Iteration {generation}: trimmed data to {1e10/reciprocal_extent} A resolution")
+
     ac = autocorrelation.solve_ac_mpi(comm, 
                                       generation,
-                                      data['pixel_position_reciprocal'],
-                                      data['reciprocal_extent'],
-                                      data['intensities'],
+                                      pixel_position_reciprocal,
+                                      reciprocal_extent,
+                                      intensities,
                                       M,
                                       orientations=orientations)
     ac_phased, support_, rho_ = phaser.phase_mpi(comm, generation, ac)
@@ -72,9 +87,10 @@ def run_mtip_mpi(comm, data, M, output, aligned=True, n_iterations=10):
                                                   res_limit)
             intensities = clip_data(data['intensities'], 
                                     data['pixel_position_reciprocal'], res_limit)
+
             orientations = alignment.match_orientations(generation,
                                                         pixel_position_reciprocal,
-                                                        data['reciprocal_extent'],
+                                                        reciprocal_extent, # needs to match resolution of ac
                                                         intensities,
                                                         ac_phased.astype(np.float32),
                                                         n_ref)
@@ -82,12 +98,21 @@ def run_mtip_mpi(comm, data, M, output, aligned=True, n_iterations=10):
             print("Using ground truth quaternions")
             orientations = data['orientations']
 
+        # trim data for solving autocorrelation
+        pixel_position_reciprocal, intensities = trim_dataset(data['pixel_index_map'], 
+                                                              data['pixel_position_reciprocal'], 
+                                                              data['intensities'], 
+                                                              data['det_shape'], 
+                                                              res_limit_ac[generation])
+        reciprocal_extent = np.linalg.norm(pixel_position_reciprocal, axis=0).max()
+        print(f"Iteration {generation}: trimmed data to {1e10/reciprocal_extent} A resolution")
+
         # solve for autocorrelation
         ac = autocorrelation.solve_ac_mpi(comm,
                                           generation,
-                                          data['pixel_position_reciprocal'],
-                                          data['reciprocal_extent'],
-                                          data['intensities'],
+                                          pixel_position_reciprocal,
+                                          reciprocal_extent,
+                                          intensities,
                                           M,
                                           orientations=orientations)
         # phase
@@ -112,17 +137,21 @@ def main():
         if not os.path.isdir(args['output']):
             os.mkdir(args['output'])
     n_images_batch = int(args['n_images'] / size)
+    
+    if args['res_limit_ac'] is not None:
+        args['niter'] = len(args['res_limit_ac'])
 
     # load subset of data onto each rank and bin if requested
     data = load_h5(args['input'], start=rank*n_images_batch, end=(rank+1)*n_images_batch)
     if args['bin_factor']!=1:
         for key in ['intensities', 'pixel_position_reciprocal']:
             data[key] = bin_data(data[key], args['bin_factor'], data['det_shape'])
-            data[key] = data[key].reshape((data[key].shape[0],1) + (np.prod(np.array(data[key].shape[1:])),))
         data['reciprocal_extent'] = np.linalg.norm(data['pixel_position_reciprocal'], axis=0).max()
+        data['pixel_index_map'] = bin_pixel_index_map(data['pixel_index_map'], args['bin_factor'])
+        data['det_shape'] = data['pixel_index_map'].shape[:3]
 
     # run MTIP to reconstruct density from simulated diffraction images
-    run_mtip_mpi(comm, data, args['M'], args['output'], aligned=args['aligned'], n_iterations=args['niter'])
+    run_mtip_mpi(comm, data, args['M'], args['output'], aligned=args['aligned'], n_iterations=args['niter'], res_limit_ac=args['res_limit_ac'])
 
 
 if __name__ == '__main__':
