@@ -47,7 +47,7 @@ def setup_experiment(args, increase_factor=1):
         det = sk.PnccdDetector(geom=args['det_info'][1])
         det.distance = float(args['det_info'][2])
     elif args['det_info'][0] == 'cspad':
-        det = sk.PnccdDetector(geom=args['det_info'][1])
+        det = sk.CsPadDetector(geom=args['det_info'][1])
         det.distance = float(args['det_info'][2])
     else:
         print("Detector type not recognized. Must be pnccd, cspad, or SimpleSquare.")

@@ -96,3 +96,35 @@ def compute_reference(pdb_file, det_info, beam_file, M):
 
     return ac, density
     
+
+def invert_handedness(density, output=None):
+    """
+    Flip the handedness of the input density file. Input can either be
+    a 3d numpy array or the mrcfile containing the density to flip.
+    
+    :param density: 3d array of density volume or mrcfile
+    :param output: mrcfile to write flipped density to, optional
+    :return flipped: 3d array of flipped density 
+    """
+    # extract 3d array if mrcfile is supplied
+    if type(density) == str:
+        density = mrcfile.open(density).data
+        
+    # change handedness by multiplying phases by -1
+    ft = np.fft.fftn(density)
+    amps, phases = np.abs(ft), np.arctan2(ft.imag, ft.real)
+    phases *= -1
+    
+    # reconstruct complex field and take inverse FT
+    a,b = amps * np.cos(phases), amps * np.sin(phases)
+    ft_flipped = a + b*1j
+    flipped = np.fft.ifftn(ft_flipped).real # imaginary component should be zero
+    
+    # floor values
+    threshold = density[density!=0].min()
+    flipped[flipped<threshold] = 0
+    
+    if output is not None:
+        save_mrc(output, flipped)
+        
+    return flipped
