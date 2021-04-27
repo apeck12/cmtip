@@ -1,14 +1,13 @@
 import argparse, time, os
 import numpy as np
 import skopi as sk
-import h5py
+import h5py, sys
 from mpi4py import MPI
 
 import cmtip.alignment as alignment
 from cmtip.prep_data import *
 from cmtip.reconstruct import save_output
 from cmtip.phasing import phase_mpi as phaser
-from cmtip.phasing import maps
 from cmtip.autocorrelation import autocorrelation_mpi as autocorrelation
 
 
@@ -18,12 +17,12 @@ def parse_input():
     """
     parser = argparse.ArgumentParser(description="Reconstruct an SPI dataset using the MTIP algorithm with MPI parallelization.")
     parser.add_argument('-i', '--input', help='Input h5 file containing intensities and exp information.')
-    parser.add_argument('-m', '--M', help='Cubic length of reconstruction volume', required=True, type=int)
+    parser.add_argument('-m', '--M', help='Cubic length of reconstruction volume', required=True, nargs='+', type=int)
     parser.add_argument('-o', '--output', help='Path to output directory', required=True, type=str)
     parser.add_argument('-t', '--n_images', help='Total number of images to process', required=True, type=int)
     parser.add_argument('-n', '--niter', help='Number of MTIP iterations', required=False, type=int, default=10)
     parser.add_argument('-r', '--res_limit_ac', help='Resolution limit for solving AC at each iteration, overrides niter', 
-                        required=False, nargs='+', type=int)
+                        required=False, nargs='+', type=float)
     parser.add_argument('-b', '--bin_factor', help='Factor by which to bin data', required=False, type=int, default=1)
     parser.add_argument('-a', '--aligned', help='Alignment from reference quaternions', action='store_true')
 
@@ -36,7 +35,7 @@ def run_mtip_mpi(comm, data, M, output, aligned=True, n_iterations=10, res_limit
     
     :param comm: MPI intracommunicator instance
     :param data: dictionary containing images, pixel positions, orientations, etc.
-    :param M: length of cubic autocorrelation volume
+    :param M: array of length n_iterations of cubic autocorrelation volume
     :param output: path to output directory
     :param aligned: if False use ground truth quaternions
     :param n_iterations: number of MTIP iterations to run, default=10
@@ -47,9 +46,10 @@ def run_mtip_mpi(comm, data, M, output, aligned=True, n_iterations=10, res_limit
     rank = comm.rank
     
     # parameters
-    n_ref, res_limit = 2000, 15
+    n_ref, res_limit = 2000, 9
     if res_limit_ac is None:
         res_limit_ac = np.zeros(n_iterations)
+    reciprocal_extents = np.zeros(n_iterations)
 
     # iteration 0: ac_estimate is unknown
     generation = 0
@@ -65,6 +65,7 @@ def run_mtip_mpi(comm, data, M, output, aligned=True, n_iterations=10, res_limit
                                                           data['det_shape'], 
                                                           res_limit_ac[generation])
     reciprocal_extent = np.linalg.norm(pixel_position_reciprocal, axis=0).max()
+    reciprocal_extents[generation] = reciprocal_extent
     print(f"Iteration {generation}: trimmed data to {1e10/reciprocal_extent} A resolution")
 
     ac = autocorrelation.solve_ac_mpi(comm, 
@@ -72,7 +73,7 @@ def run_mtip_mpi(comm, data, M, output, aligned=True, n_iterations=10, res_limit
                                       pixel_position_reciprocal,
                                       reciprocal_extent,
                                       intensities,
-                                      M,
+                                      M[generation],
                                       orientations=orientations)
     ac_phased, support_, rho_ = phaser.phase_mpi(comm, generation, ac)
     if rank == 0:
@@ -105,7 +106,13 @@ def run_mtip_mpi(comm, data, M, output, aligned=True, n_iterations=10, res_limit
                                                               data['det_shape'], 
                                                               res_limit_ac[generation])
         reciprocal_extent = np.linalg.norm(pixel_position_reciprocal, axis=0).max()
+        reciprocal_extents[generation] = reciprocal_extent
         print(f"Iteration {generation}: trimmed data to {1e10/reciprocal_extent} A resolution")
+
+        # if M or resolution has changed, resize the support_ and rho_ from previous iteration
+        if (M[generation] != M[generation-1]) or (res_limit_ac[generation] != res_limit_ac[generation-1]):
+            support_, rho_ = phaser.resize_mpi(comm, support_, rho_, M[generation], 
+                                               reciprocal_extents[generation-1], reciprocal_extents[generation])
 
         # solve for autocorrelation
         ac = autocorrelation.solve_ac_mpi(comm,
@@ -113,7 +120,7 @@ def run_mtip_mpi(comm, data, M, output, aligned=True, n_iterations=10, res_limit
                                           pixel_position_reciprocal,
                                           reciprocal_extent,
                                           intensities,
-                                          M,
+                                          M[generation],
                                           orientations=orientations)
         # phase
         ac_phased, support_, rho_ = phaser.phase_mpi(comm, generation, ac, support_, rho_)
@@ -138,8 +145,14 @@ def main():
             os.mkdir(args['output'])
     n_images_batch = int(args['n_images'] / size)
     
+    # set resolution and volume size at each iteration
     if args['res_limit_ac'] is not None:
         args['niter'] = len(args['res_limit_ac'])
+    if len(args['M']) == 1:
+        args['M'] = args['niter'] * args['M']
+    if len(args['M']) != args['niter']:
+        print("Error: M array does not match number of MTIP iterations")
+        sys.exit()
 
     # load subset of data onto each rank and bin if requested
     data = load_h5(args['input'], start=rank*n_images_batch, end=(rank+1)*n_images_batch)

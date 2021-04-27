@@ -1,6 +1,7 @@
 import numpy as np
 import mrcfile, h5py
 import skopi as sk
+import scipy.ndimage
 
 """
 Functions for visualizing results of phasing and comparing to reference.
@@ -128,3 +129,31 @@ def invert_handedness(density, output=None):
         save_mrc(output, flipped)
         
     return flipped
+
+
+def resize_volume(vol, M_next, re_orig, re_next):
+    """
+    Resize the volume from original shape to dimensions of M_next cubed,
+    from the original to new reciprocal space extent.
+    
+    :param vol: 3d numpy array of volume to resize
+    :param M_next: cubic length of new volume
+    :param re_orig: reciprocal space extent of input volume
+    :param re_next: reciprocal space extent of resized volume
+    """
+    # scale based on changes in resolution
+    zfactor = re_next / re_orig
+    temp = scipy.ndimage.zoom(vol, zfactor)
+    hs_temp, hs = int(temp.shape[0]/2), int(vol.shape[0]/2)
+    temp = temp[hs_temp-hs:hs_temp+hs+1,
+                hs_temp-hs:hs_temp+hs+1,
+                hs_temp-hs:hs_temp+hs+1]
+
+    # center in correct volume size
+    hs_next = int(M_next / 2)
+    resized = np.zeros((M_next, M_next, M_next))
+    resized[hs_next-hs:hs_next+hs+1,
+            hs_next-hs:hs_next+hs+1,
+            hs_next-hs:hs_next+hs+1] = temp
+    
+    return resized

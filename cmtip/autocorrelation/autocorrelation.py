@@ -74,7 +74,7 @@ def gen_F_antisupport(M):
     # generate "antisupport" -- this has zeros in central sphere, 1s outside
     lu = np.linspace(-np.pi, np.pi, M)
     Hu_, Ku_, Lu_ = np.meshgrid(lu, lu, lu, indexing='ij')
-    Qu_ = np.sqrt(Hu_**2 + Ku_**2 + Lu_**2)
+    Qu_ = np.around(np.sqrt(Hu_**2 + Ku_**2 + Lu_**2), 4)
     F_antisupport = Qu_ > np.pi 
 
     assert np.all(F_antisupport == F_antisupport[::-1, :, :])
