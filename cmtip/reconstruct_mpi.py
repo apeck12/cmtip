@@ -24,12 +24,14 @@ def parse_input():
     parser.add_argument('-r', '--res_limit_ac', help='Resolution limit for solving AC at each iteration, overrides niter', 
                         required=False, nargs='+', type=float)
     parser.add_argument('-b', '--bin_factor', help='Factor by which to bin data', required=False, type=int, default=1)
+    parser.add_argument('-ap', '--a_params', help='Alignment parameters: (n_reference, res_limit, weighting_order)',
+                        required=False, nargs=3, type=float, default=[2500, 8.0, -2])
     parser.add_argument('-a', '--aligned', help='Alignment from reference quaternions', action='store_true')
 
     return vars(parser.parse_args())
 
 
-def run_mtip_mpi(comm, data, M, output, aligned=True, n_iterations=10, res_limit_ac=None):
+def run_mtip_mpi(comm, data, M, output, aligned=True, n_iterations=10, res_limit_ac=None, a_params=[2500,8,-2]):
     """
     Run MTIP algorithm.
     
@@ -40,16 +42,17 @@ def run_mtip_mpi(comm, data, M, output, aligned=True, n_iterations=10, res_limit
     :param aligned: if False use ground truth quaternions
     :param n_iterations: number of MTIP iterations to run, default=10
     :param res_limit_ac: resolution limit to which to solve AC at each iteration. if None use full res.
+    :param a_params: list of alignment parameters, (n_reference, res_limit, weight_order)
     """  
     print("Running MTIP")
     start_time = time.time()
     rank = comm.rank
     
-    # parameters
-    n_ref, res_limit = 2000, 9
+    # track resolution limits at each iteration, retrieve alignment parameters
     if res_limit_ac is None:
         res_limit_ac = np.zeros(n_iterations)
     reciprocal_extents = np.zeros(n_iterations)
+    n_ref, res_limit_align, weight_order = int(a_params[0]), a_params[1], a_params[2]
 
     # iteration 0: ac_estimate is unknown
     generation = 0
@@ -83,18 +86,20 @@ def run_mtip_mpi(comm, data, M, output, aligned=True, n_iterations=10, res_limit
     for generation in range(1, n_iterations):
         # align slices using clipped data
         if not aligned:
+            print(f"Aligning using {n_ref} ref slices to {res_limit_align} A res, order weight of {weight_order}")
             pixel_position_reciprocal = clip_data(data['pixel_position_reciprocal'], 
                                                   data['pixel_position_reciprocal'],
-                                                  res_limit)
+                                                  res_limit_align)
             intensities = clip_data(data['intensities'], 
-                                    data['pixel_position_reciprocal'], res_limit)
+                                    data['pixel_position_reciprocal'], res_limit_align)
 
             orientations = alignment.match_orientations(generation,
                                                         pixel_position_reciprocal,
                                                         reciprocal_extent, # needs to match resolution of ac
                                                         intensities,
                                                         ac_phased.astype(np.float32),
-                                                        n_ref)
+                                                        n_ref,
+                                                        order=weight_order)
         else:
             print("Using ground truth quaternions")
             orientations = data['orientations']
@@ -164,7 +169,8 @@ def main():
         data['det_shape'] = data['pixel_index_map'].shape[:3]
 
     # run MTIP to reconstruct density from simulated diffraction images
-    run_mtip_mpi(comm, data, args['M'], args['output'], aligned=args['aligned'], n_iterations=args['niter'], res_limit_ac=args['res_limit_ac'])
+    run_mtip_mpi(comm, data, args['M'], args['output'], aligned=args['aligned'], 
+                 n_iterations=args['niter'], res_limit_ac=args['res_limit_ac'], a_params=args['a_params'])
 
 
 if __name__ == '__main__':
