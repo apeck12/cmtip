@@ -8,32 +8,35 @@ Functions for determining image orientations by comparing to reference images
 computed by slicing through the estimated diffraction volume (from the ac).
 """
 
+def generate_weights(pixel_position_reciprocal, order=0):
+    """
+    Generate weights: 1/(pixel_position_reciprocal)^order, to dictate
+    the contribution of the high-resolution pixels.
+
+    :param pixel_position_reciprocal: reciprocal space position of each pixel
+    :param order: power, uniform weights if zero
+    :return weights: resolution-based weight of each pixel
+    """
+    s_magnitudes = np.linalg.norm(pixel_position_reciprocal, axis=0) * 1e-10 # convert to Angstrom
+    weights = 1.0 / (s_magnitudes ** order)
+    weights /= np.sum(weights)
+    
+    return weights
+
+
 def calc_eudist(model_slices, slices):
     """
     Calculate the Euclidean distance between reference and data slices.
     
     :param model_slices: reference images of shape (n_images, n_detector_pixels)
     :param slices: data images of shape (n_images, n_detector_pixels)
+    :return euDist: matrix of distances of shape (no. model_slices, no. slices)
     """
     euDist = euclidean_distances(model_slices, slices)
     return euDist
 
 
-def calc_argmin(euDist, n_images, n_refs, n_pixels):
-    """
-    Calculate the indices where the distance between the reference and
-    data slices are minimized.
-    
-    :param model_slices:
-    :param n_images: number of data images
-    :param n_refs: number of reference images
-    :param n_pixels: number of detector pixels
-    """
-    index = np.argmin(euDist, axis=0)
-    return index
-
-
-def nearest_neighbor(model_slices, slices):
+def nearest_neighbor(model_slices, slices, weights=None):
     """
     Calculate the indices where the distance between the reference and
     data slices are minimized, using a nearest-neighbor approach that
@@ -41,12 +44,15 @@ def nearest_neighbor(model_slices, slices):
     
     :param model_slices: reference images of shape (n_images, n_detector_pixels)
     :param slices: data images of shape (n_images, n_detector_pixels)
+    :param weights: weights of shape (1, n_detector_pixels)
+    :return index: array of indices that map slices to best model_slices match 
     """
-    euDist = calc_eudist(model_slices, slices)
-    index = calc_argmin(euDist, 
-                        slices.shape[0],
-                        model_slices.shape[0],
-                        slices.shape[1])
+    if weights is None:
+        weights = np.ones((1, slices.shape[1]))
+    
+    euDist = calc_eudist(model_slices * weights, slices * weights)
+    index = np.argmin(euDist, axis=0)
+    
     return index
 
 
@@ -81,6 +87,7 @@ def match_orientations(generation,
                        slices_,
                        ac,
                        n_ref_orientations,
+                       order=0,
                        true_orientations=None):
     """
     Determine orientations of the data images by matching to reference images
@@ -94,6 +101,7 @@ def match_orientations(generation,
     :param slices_: intensity data of shape (n_images,n_panels,n_pixels_per_panel)
     :param ac: 3d array of estimated autocorrelation
     :param n_ref_orientations: number of reference orientations to compute from autocorrelation
+    :param order: power for s-weighting, uniform weights if zero 
     :param true_orientations: quaternion orientations of slices_, used for debugging
     :return ref_orientations: array of quaternions matched to slices_
     """
@@ -127,6 +135,57 @@ def match_orientations(generation,
     model_slices *= data_model_scaling_ratio
     
     # compute indices of matches between reference and data orientations
-    index = nearest_neighbor(model_slices, slices_)
+    weights = generate_weights(pixel_position_reciprocal, order=order)
+    index = nearest_neighbor(model_slices, slices_, weights)
 
     return ref_orientations[index]
+
+
+def match_orientations_batch(generation, 
+                             pixel_position_reciprocal, 
+                             reciprocal_extent, 
+                             slices_,
+                             ac,
+                             n_ref_orientations,
+                             batch_size=400,
+                             order=0,
+                             true_orientations=None):
+    """
+    Wrapper that batches image alignment by sequentially aligning batches of data
+    images against the reference slices.
+
+    :param generation: current iteration
+    :param pixel_position_reciprocal: pixels' reciprocal space positions, array of shape
+        (3,n_panels,n_pixels_per_panel)
+    :param reciprocal_extent: reciprocal space magnitude of highest resolution pixel
+    :param slices_: intensity data of shape (n_images,n_panels,n_pixels_per_panel)
+    :param ac: 3d array of estimated autocorrelation
+    :param n_ref_orientations: number of reference orientations to compute from autocorrelation
+    :param batch_size: number of data images per batch
+    :param order: power for s-weighting, uniform weights if zero 
+    :param true_orientations: quaternion orientations of slices_, used for debugging
+    :return ref_orientations: array of quaternions matched to slices_
+    """
+    ref_orientations = np.zeros((slices_.shape[0],4))
+    
+    quot, remainder = divmod(slices_.shape[0], batch_size)
+    if quot == 0:
+        quot = 1
+    
+    for i in range(quot):
+        start, end = i*batch_size, (i+1)*batch_size
+        if i == quot - 1:
+            end = slices_.shape[0]
+            
+        if true_orientations is not None:
+            true_orientations[start:end]
+        
+        ref_orientations[start:end] = match_orientations(generation,
+                                                         pixel_position_reciprocal,
+                                                         reciprocal_extent,
+                                                         slices_[start:end],
+                                                         ac,
+                                                         n_ref_orientations,
+                                                         order=order,
+                                                         true_orientations=true_orientations)
+    return ref_orientations
