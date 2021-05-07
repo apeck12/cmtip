@@ -4,9 +4,9 @@ import skopi as sk
 import h5py
 
 """
-Simulate an ultra-simple SPI dataset on either a SimpleSquare or LCLSDetector. 
-The images contain the intensity information, corrected for polarization and 
-solid angle, but without quantization.
+Simulate a simple SPI dataset on either a SimpleSquare or LCLSDetector. Either intensities 
+(default) or photons (intensities+Poission noise) are computed, and then corrected for the
+solid angle and polarization effects.
 """
 
 def parse_input():
@@ -20,22 +20,23 @@ def parse_input():
                         'or (det_type, geom_file, distance) for LCLSDetectors. det_type could be pnccd, for instance',
                         required=True, nargs=3)
     parser.add_argument('-n', '--n_images', help='Number of slices to compute', required=True, type=int)
+    parser.add_argument('-q', '--quantize', help='If true, compute photons rather than intensities', action='store_true')
+    parser.add_argument('-s', '--increase_factor', help='Scale factor by which to increase beam fluence', required=False, default=1, type=float)
     parser.add_argument('-o', '--output', help='Path to output directory', required=False, type=str)
 
     return vars(parser.parse_args())
 
 
-def setup_experiment(args, increase_factor=1):
+def setup_experiment(args):
     """
     Set up experiment class.
     
     :param args: dict containing beam, pdb, and detector info
-    :param increase_factor: factor by which to increase beam fluence
     :return exp: SPIExperiment object
     """
     beam = sk.Beam(args['beam_file'])
-    if increase_factor != 1:
-        beam.set_photons_per_pulse(increase_factor*beam.get_photons_per_pulse())
+    if args['increase_factor'] != 1:
+        beam.set_photons_per_pulse(args['increase_factor']*beam.get_photons_per_pulse())
     
     particle = sk.Particle()
     particle.read_pdb(args['pdb_file'], ff='WK')
@@ -66,6 +67,12 @@ def simulate_writeh5(args):
     print("Simulating diffraction images")
     start_time = time.time()
 
+    # set image type
+    if args['quantize']:
+        itype = 'photons'
+    else:
+        itype = 'intensities'
+
     # set up experiment and create h5py file
     exp = setup_experiment(args)
     f = h5py.File(args["output"], "w")
@@ -77,10 +84,13 @@ def simulate_writeh5(args):
     f.create_dataset("orientations", data=exp._orientations) # ground truth quaternions
 
     # simulate images and save to h5 file
-    imgs = f.create_dataset("intensities", shape=((args['n_images'],) + exp.det.shape))
+    imgs = f.create_dataset(itype, shape=((args['n_images'],) + exp.det.shape))
     for num in range(args['n_images']):
-        img = exp.generate_image_stack(return_intensities=True)
-        imgs[num,:,:,:] = img / exp.det.polarization_correction / exp.det.solid_angle_per_pixel / 1e6 # scale to stay within nufft bounds
+        if itype == 'intensities':
+            img = exp.generate_image_stack(return_intensities=True)
+        else:
+            img = exp.generate_image_stack(return_photons=True)
+        imgs[num,:,:,:] = img / exp.det.polarization_correction / exp.det.solid_angle_per_pixel / 1e6 # scale for nufft bounds
 
     # save useful attributes
     f.attrs['reciprocal_extent'] = np.linalg.norm(exp.det.pixel_position_reciprocal, axis=-1).max() # max |s|
@@ -109,14 +119,21 @@ def simulate_images(args):
     # set up experiment
     exp = setup_experiment(args)
     
-    # generate data dictionary
+    # generate data dictionary and set image type
     data = dict()
-    data['intensities'] = np.zeros((args['n_images'],) + exp.det.shape)
+    if args['quantize']:
+        itype = 'photons'
+    else:
+        itype = 'intensities'
 
     # simulate shots
+    data[itype] = np.zeros((args['n_images'],) + exp.det.shape)
     for num in range(args['n_images']):
-        img = exp.generate_image_stack(return_intensities=True)
-        data["intensities"][num,:,:,:] = img / exp.det.polarization_correction / exp.det.solid_angle_per_pixel / 1e6 # scale for nufft bounds
+        if itype == 'intensities':
+            img = exp.generate_image_stack(return_intensities=True)
+        else:
+            img = exp.generate_image_stack(return_photons=True)
+        data[itype][num,:,:,:] = img / exp.det.polarization_correction / exp.det.solid_angle_per_pixel / 1e6 # scale for nufft bounds
 
     # populate rest of dictionary
     data["orientations"] = exp._orientations # quaternions
@@ -129,7 +146,7 @@ def simulate_images(args):
     data['det_shape'] = exp.det.shape # detector shape (n_panels, panel_num_x, panel_num_y)
 
     # flatten intensities and pixel_position_reciprocal arrays
-    data['intensities'] = data['intensities'].reshape(args['n_images'],1,exp.det.pixel_num_total)
+    data[itype] = data[itype].reshape(args['n_images'],1,exp.det.pixel_num_total)
     data['pixel_position_reciprocal'] = data['pixel_position_reciprocal'].reshape(3,1,exp.det.pixel_num_total)
 
     print("elapsed time is %.2f" %((time.time() - start_time)/60.0))

@@ -1,5 +1,5 @@
 import numpy as np
-import h5py
+import h5py, sys
 
 """
 Functions for data pre-processing: loading, binning, cutting resolution,
@@ -27,6 +27,13 @@ def load_h5(input_file, start=0, end=None, load_ivol=False):
         reciprocal_extent = f.attrs['reciprocal_extent']
         det_dist = f.attrs['det_distance']
         det_shape = tuple(f.attrs['det_shape'])
+        if 'intensities' in list(f.keys()):
+            itype = 'intensities'
+        elif 'photons' in list(f.keys()):
+            itype = 'photons'
+        else:
+            print("Unrecognized data type; should be photons or intensities")
+            sys.exit()
     
     # handle case of loading subset of file
     if (end is None) or (end > n_images):
@@ -34,7 +41,7 @@ def load_h5(input_file, start=0, end=None, load_ivol=False):
     n_images = end - start
     
     # retrieve data
-    data['intensities'] = np.zeros((n_images,) + det_shape).astype(np.float32)
+    data[itype] = np.zeros((n_images,) + det_shape).astype(np.float32)
     data['orientations'] = np.zeros((n_images, 4)).astype(np.float32)
     data['pixel_position_reciprocal'] = np.zeros((3,) + det_shape).astype(np.float32)
     data['pixel_index_map'] = np.zeros(det_shape + (2,)).astype(int)
@@ -43,13 +50,13 @@ def load_h5(input_file, start=0, end=None, load_ivol=False):
     
     with h5py.File(input_file, 'r') as f:
         for key in data.keys():
-            if key in ['orientations', 'intensities']:
+            if key in ['orientations', itype]:
                 data[key][:] = f[key][start:end]
             else:
                 data[key][:] = f[key][:]
                 
     # flatten each image
-    data['intensities'] = data['intensities'].reshape(n_images,1,n_pixels_per_image)
+    data['intensities'] = data[itype].reshape(n_images,1,n_pixels_per_image)
     data['pixel_position_reciprocal'] = data['pixel_position_reciprocal'].reshape(3,1,n_pixels_per_image)
     data['pixel_index_map'] = data['pixel_index_map']
             
@@ -58,6 +65,9 @@ def load_h5(input_file, start=0, end=None, load_ivol=False):
     data['reciprocal_extent'] = reciprocal_extent
     data['det_dist'] = det_dist
     data['det_shape'] = det_shape
+
+    if 'photons' in data.keys():
+        data.pop('photons', None)
 
     return data
 
