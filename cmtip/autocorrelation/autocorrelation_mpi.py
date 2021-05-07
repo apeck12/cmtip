@@ -125,8 +125,10 @@ def solve_ac_mpi(comm, generation, pixel_position_reciprocal, reciprocal_extent,
     weights = np.ones(N).astype(np.float32)
 
     alambda = 1
-    rlambda = Mtot / N / 1000
-    flambda = 1e3
+    #rlambda = Mtot / N / 1000
+    rlambda = Mtot/(N*comm.size) * 2**(comm.rank - comm.size/2)
+    #flambda = 1e3
+    flambda = 1e5 * pow(10, comm.rank - comm.size//2)
     maxiter = 100
 
     def callback(xk):
