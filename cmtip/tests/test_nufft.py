@@ -20,6 +20,8 @@ class TestNUFFT(object):
         args['pdb_file'] = os.path.join(os.path.dirname(__file__), '../../examples/input/3iyf.pdb')
         args['det_info'] = ("128", "0.08", "0.2")
         args['n_images'] = 1
+        args['increase_factor'] = 1
+        args['quantize'] = False
         
         data = simulate_images(args)
         cls.ivol = np.square(np.abs(data['volume'].astype(np.float32))) * 1e-6

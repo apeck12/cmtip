@@ -116,8 +116,9 @@ def run_mtip_mpi(comm, data, M, output, aligned=True, n_iterations=10, res_limit
 
         # if M or resolution has changed, resize the support_ and rho_ from previous iteration
         if (M[generation] != M[generation-1]) or (res_limit_ac[generation] != res_limit_ac[generation-1]):
-            support_, rho_ = phaser.resize_mpi(comm, support_, rho_, M[generation], 
-                                               reciprocal_extents[generation-1], reciprocal_extents[generation])
+            support_, rho_ = None, None
+#            support_, rho_ = phaser.resize_mpi(comm, support_, rho_, M[generation], 
+#                                               reciprocal_extents[generation-1], reciprocal_extents[generation])
 
         # solve for autocorrelation
         ac = autocorrelation.solve_ac_mpi(comm,
