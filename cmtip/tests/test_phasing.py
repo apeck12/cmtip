@@ -21,10 +21,10 @@ class TestPhase(object):
         args = dict()
         args['beam_file'] = os.path.join(os.path.dirname(__file__), '../../examples/input/amo86615.beam')
         args['pdb_file'] = os.path.join(os.path.dirname(__file__), '../../examples/input/3iyf.pdb')
-        args['det_info'] = (128, 0.08, 0.2)
+        args['resolution'] = 10.0 # in Angstrom
         args['M'] = 81 
         
-        ref_ac, ref_density = compute_reference(args['pdb_file'], args['det_info'], args['beam_file'], args['M'])
+        ref_ac, ref_density = compute_reference(args['pdb_file'], args['M'], 1e10/args['resolution'])
         cls.ref_density = gaussian_filter(ref_density, sigma=0.8) # reference will have higher res than phased
         ac_phased, support_, rho_ = phase(0, ref_ac, nER=60, nHIO=30)
         cls.est_density = np.fft.ifftshift(rho_)
@@ -39,11 +39,11 @@ class TestPhase(object):
                     est_proj = np.sum(self.est_density, axis=j)
                     cc_proj = np.corrcoef(ref_proj.flatten(), est_proj.flatten())[0,1]
                     if i == j: # corresponding slices match
-                        assert cc_proj > 0.9
+                        assert cc_proj > 0.85
                     elif i!=2 and j!=2: # additional matches due to this protein's symmetry
-                        assert cc_proj > 0.9
+                        assert cc_proj > 0.85
                     else:
-                        assert cc_proj < 0.9
+                        assert cc_proj < 0.85
                         
         f, ((ax1,ax2,ax3), (ax4,ax5,ax6)) = plt.subplots(2, 3, figsize=(9,6))
 
