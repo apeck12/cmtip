@@ -36,26 +36,6 @@ def calc_eudist(model_slices, slices):
     return euDist
 
 
-def nearest_neighbor(model_slices, slices, weights=None):
-    """
-    Calculate the indices where the distance between the reference and
-    data slices are minimized, using a nearest-neighbor approach that
-    minimizes the Euclidean distance.
-    
-    :param model_slices: reference images of shape (n_images, n_detector_pixels)
-    :param slices: data images of shape (n_images, n_detector_pixels)
-    :param weights: weights of shape (1, n_detector_pixels)
-    :return index: array of indices that map slices to best model_slices match 
-    """
-    if weights is None:
-        weights = np.ones((1, slices.shape[1]))
-    
-    euDist = calc_eudist(model_slices * weights, slices * weights)
-    index = np.argmin(euDist, axis=0)
-    
-    return index
-
-
 def compute_slices(orientations, pixel_position_reciprocal, reciprocal_extent, ac):
     """
     Compute slices through the diffraction volume estimated from the autocorrelation.
@@ -87,12 +67,14 @@ def match_orientations(generation,
                        slices_,
                        ac,
                        n_ref_orientations,
+                       nbatches=1,
                        order=0,
                        true_orientations=None):
     """
     Determine orientations of the data images by matching to reference images
     computed by randomly slicing through the diffraction intensities esimated
     from the autocorrelation. Matching is done by minimizing nearest neighbors.
+    Optionally batch the calculation by dividing up the number of model slices.
     
     :param generation: current iteration
     :param pixel_position_reciprocal: pixels' reciprocal space positions, array of shape
@@ -101,43 +83,45 @@ def match_orientations(generation,
     :param slices_: intensity data of shape (n_images,n_panels,n_pixels_per_panel)
     :param ac: 3d array of estimated autocorrelation
     :param n_ref_orientations: number of reference orientations to compute from autocorrelation
+    :param nbatches: number of batches to divide model slices into
     :param order: power for s-weighting, uniform weights if zero 
     :param true_orientations: quaternion orientations of slices_, used for debugging
     :return ref_orientations: array of quaternions matched to slices_
     """
-    
-    # generate reference images by slicing through autocorrelation
-    n_det_pixels = pixel_position_reciprocal.shape[-1]
-    ref_orientations = sk.get_uniform_quat(n_ref_orientations, True).astype(np.float32)
-    
-    model_slices = compute_slices(ref_orientations, pixel_position_reciprocal, reciprocal_extent, ac)
-    model_slices = model_slices.reshape((n_ref_orientations, n_det_pixels))
-    
-    # for debugging purposes, add in slices that match exactly
-    if true_orientations is not None:
-        tmodel_slices = compute_slices(true_orientations, pixel_position_reciprocal, reciprocal_extent, ac)
-        tmodel_slices = tmodel_slices.reshape((true_orientations.shape[0], n_det_pixels))
-        model_slices = np.vstack((model_slices, tmodel_slices))
-        
-        shuffled = np.arange(model_slices.shape[0])
-        np.random.shuffle(shuffled)
-        
-        ref_orientations = np.vstack((ref_orientations, true_orientations))
-        ref_orientations = ref_orientations[shuffled]
-        model_slices = model_slices[shuffled]
-    
-    # flatten each image in data
-    slices_ = slices_.reshape((slices_.shape[0], n_det_pixels))
-    
-    # scale model_slices
-    data_model_scaling_ratio = slices_.std() / model_slices.std()
-    print(f"Data/Model std ratio: {data_model_scaling_ratio}.", flush=True)
-    model_slices *= data_model_scaling_ratio
-    
-    # compute indices of matches between reference and data orientations
-    weights = generate_weights(pixel_position_reciprocal, order=order)
-    index = nearest_neighbor(model_slices, slices_, weights)
 
+    quot, remainder = divmod(n_ref_orientations, nbatches)
+    if remainder != 0:
+        n_ref_orientations = (quot + 1) * nbatches 
+        quot, remainder = divmod(n_ref_orientations, nbatches)
+
+    # flatten each image in data
+    n_det_pixels = pixel_position_reciprocal.shape[-1]
+    slices_ = slices_.reshape((slices_.shape[0], n_det_pixels))
+
+    # get reference orientations 
+    ref_orientations = sk.get_uniform_quat(n_ref_orientations, True).astype(np.float32)
+    if true_orientations is not None:
+        ref_orientations = np.vstack((ref_orientations[:-len(true_orientations)], true_orientations))
+        np.random.shuffle(ref_orientations)
+
+    # compute distances to data slices for each batch of model slices
+    distances = np.zeros((n_ref_orientations, slices_.shape[0]))
+    for nb in range(nbatches):
+        start, end = nb*quot, (nb+1)*quot
+        model_slices = compute_slices(ref_orientations[start:end], pixel_position_reciprocal, reciprocal_extent, ac)
+        model_slices = model_slices.reshape((end - start, n_det_pixels))
+
+        # scale model_slices
+        data_model_scaling_ratio = slices_.std() / model_slices.std()
+        print(f"Data/Model std ratio: {data_model_scaling_ratio}.", flush=True)
+        model_slices *= data_model_scaling_ratio
+
+        # compute indices of matches between reference and data orientations
+        weights = generate_weights(pixel_position_reciprocal, order=order)
+        distances[start:end,:] = calc_eudist(model_slices * weights, slices_ * weights)
+
+    # determine which 
+    index = np.argmin(distances, axis=0)
     return ref_orientations[index]
 
 
@@ -147,6 +131,7 @@ def match_orientations_batch(generation,
                              slices_,
                              ac,
                              n_ref_orientations,
+                             nbatches=1,
                              batch_size=400,
                              order=0,
                              true_orientations=None):
@@ -161,6 +146,7 @@ def match_orientations_batch(generation,
     :param slices_: intensity data of shape (n_images,n_panels,n_pixels_per_panel)
     :param ac: 3d array of estimated autocorrelation
     :param n_ref_orientations: number of reference orientations to compute from autocorrelation
+    :param nbatches: number of batches to divide model slices into 
     :param batch_size: number of data images per batch
     :param order: power for s-weighting, uniform weights if zero 
     :param true_orientations: quaternion orientations of slices_, used for debugging
@@ -186,6 +172,7 @@ def match_orientations_batch(generation,
                                                          slices_[start:end],
                                                          ac,
                                                          n_ref_orientations,
+                                                         nbatches=nbatches,
                                                          order=order,
                                                          true_orientations=true_orientations)
     return ref_orientations

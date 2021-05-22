@@ -38,6 +38,7 @@ class TestAlignment(object):
                                              self.data['intensities'],
                                              self.ac,
                                              100,
+                                             nbatches=2,
                                              true_orientations=self.data['orientations'])
     
         assert np.all(quats - self.data['orientations'])==0
