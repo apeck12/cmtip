@@ -4,6 +4,7 @@ import skopi as sk
 import scipy.ndimage
 import scipy.interpolate
 from cmtip.alignment import errors
+from cmtip.phasing import center_of_mass
 
 """
 Functions for visualizing results of phasing and comparing to reference.
@@ -33,7 +34,7 @@ def get_reciprocal_mesh(voxel_number_1d, distance_reciprocal_max):
     Altered from skopi.
     
     :param voxel_number_1d: number of voxel per axis
-    :param distance_reciprocal_max: corner resolution of autocorrelation
+    :param distance_reciprocal_max: edge resolution in per Angstrom
     :return reciprocal_mesh: grid of reciprocal distances with max edge 
        resolution of distance_reciprocal_max
     """
@@ -140,6 +141,64 @@ def score_orientations(ref_volume, volume, orientations):
     return orientations[index]
 
 
+def translate_density(density, shifts):
+    """
+    Translate density by rolling the x,y,z, axes by shifts.
+    
+    :param density: density map to be shifted
+    :param shifts: array of [xshift,yshift,zshift]
+    :return density: shifted density map (performed in place)
+    """
+    for i in range(3):
+        density[:] = np.roll(density, shifts[i], i)
+    
+    return density
+
+
+def optimize_translation(ref_density, est_density):
+    """
+    Though density maps are assumed to be roughly centered, check whether translations
+    by one pixel along any dimension improves the correlation between maps.
+    
+    :param ref_density: reference density
+    :param est_density: estimated density to be shifted
+    :return trans_density: translated est_density
+    """
+    prev_cc, trans_density = 0, est_density.copy()
+    for i in range(-1,2):
+        for j in range(-1,2):
+            for k in range(-1,2):
+                rolled = est_density.copy()
+                rolled = translate_density(rolled, np.array([i,j,k]))
+                cc = np.corrcoef(rolled.flatten(), ref_density.flatten())[0,1]
+                if cc > prev_cc:
+                    trans_density = rolled.copy()
+                    prev_cc = cc
+                    
+    return trans_density
+
+
+def center_density(density):
+    """
+    Center density in the volume.
+
+    :param density: cubic density map to be centered
+    :return centered: centered density map
+    """
+    M = density.shape[0]
+    ls = np.linspace(-1, 1, M+1)
+    ls = (ls[:-1] + ls[1:])/2
+
+    hkl_list = np.meshgrid(ls, ls, ls, indexing='ij')
+    hkl_ = np.stack([coord for coord in hkl_list])
+    vect = center_of_mass(density, hkl_, M).astype(int)
+
+    centered = density.copy()
+    centered = translate_density(centered, -1*vect)
+        
+    return centered
+
+
 def align_volumes(ref_volume, volume, sigma=0, n_iterations=10, tol=0.05):
     """
     Align volume to ref_volume. Candidate orientations are scored by computing
@@ -152,24 +211,52 @@ def align_volumes(ref_volume, volume, sigma=0, n_iterations=10, tol=0.05):
     :param tol: convergence error in degrees (between iterations)
     :return r_volume: rotated volume
     """
-    
+    # optionally gaussian blur volumes
     ref_volume_f = scipy.ndimage.gaussian_filter(ref_volume, sigma=sigma)
     volume_f = scipy.ndimage.gaussian_filter(volume, sigma=sigma)
     
-    quats = np.zeros((n_iterations,4))
+    # coarse and then fine search
     orientations = sk.get_uniform_quat(720)
-    quats[0] = score_orientations(ref_volume_f, volume_f, orientations)
+    base_quat = score_orientations(ref_volume_f, volume_f, orientations)
+    opt_quat1 = align_volumes_fine(ref_volume_f, volume_f, base_quat, n_iterations=n_iterations, tol=tol)
+    
+    # rotate original volume and optimize translation
+    r_volume = rotate_volume(volume, sk.quaternion2rot3d(opt_quat1))
+    r_volume = optimize_translation(ref_volume, r_volume)
+    
+    # another fine search of translated, gaussian-blurred volume
+    r_volume_f = scipy.ndimage.gaussian_filter(r_volume, sigma=sigma)
+    base_quat = sk.rotmat_to_quaternion(np.eye(3))
+    opt_quat2 = align_volumes_fine(ref_volume_f, r_volume_f, base_quat, n_iterations=n_iterations, tol=tol)
+
+    r_volume = rotate_volume(r_volume, sk.quaternion2rot3d(opt_quat2))
+    return r_volume
+
+
+def align_volumes_fine(ref_volume, volume, base_quat, n_iterations=10, tol=0.05):
+    """
+    Refine alignment by performing a fine search in the vicinity of base_quat.
+    
+    :param ref_volume: reference volume
+    :param volume: target volume
+    :param base_quat: initial quaternion to search in vicinity of
+    :param n_iterations: maximum number of iterations
+    :param tol: convergence error in degrees (between iterations)
+    :return opt_quat: optimal quaternion that aligns volume to ref_volume
+    """
+    quats = np.zeros((n_iterations,4))
+    quats[0] = base_quat
     
     for n in range(1,n_iterations):
         orientations = sk.get_preferred_orientation_quat(1.0/n, 360, base_quat=quats[n-1])
         orientations = np.vstack((quats[n-1], orientations))
-        quats[n] = score_orientations(ref_volume_f, volume_f, orientations)
+        quats[n] = score_orientations(ref_volume, volume, orientations)
+        
         if errors.alignment_error(np.array(quats[n-1]), np.array(quats[n])) < tol:
             quats = quats[:n]
             break
-        
-    r_volume = rotate_volume(volume, sk.quaternion2rot3d(quats[-1]))
-    return r_volume
+            
+    return quats[-1]
 
 
 def compute_fsc(volume1, volume2, distance_reciprocal_max, spacing):

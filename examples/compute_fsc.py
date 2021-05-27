@@ -15,7 +15,7 @@ def parse_input():
     """
     parser = argparse.ArgumentParser(description="Compute FSC relative to refrence from a series of MRC files.")
     parser.add_argument('-i', '--input', help='Input PDB files in glob-readable format', required=True, type=str)
-    parser.add_argument('-o', '--output', help='Output for saving resolutions array', required=True, type=str)
+    parser.add_argument('-o', '--output', help='Output directory for MRC files and resolutions array', required=True, type=str)
     parser.add_argument('-p', '--pdb_file', help='PDB file of reference structure', required=True, type=str)
     parser.add_argument('-m', '--M', help='Cubic length of reconstruction volume', required=True, type=int)
     parser.add_argument('-r', '--resolution', help='Corner resolution of autocorrelation', required=True, type=float)
@@ -38,39 +38,52 @@ def calculate_res(ref_density, est_density, sigma, max_res, spacing, n_iteration
     :param n_iteration: max number of alignment iterations, default=10
     :param tol: tolerance in degrees for determining when alignment has converged, default=0.01
     :return est_res: estimated resolution based on FSC=0.5 in Angstrom
+    :return rot_density: density map after alignment to reference
     """
     rot_density = align_volumes(ref_density, est_density, 
                                 sigma=sigma, n_iterations=n_iterations, tol=tol)
     rs, fsc, est_res = compute_fsc(ref_density, rot_density, 1e10/max_res, spacing)
 
-    return est_res
+    return est_res, rot_density
 
 
 def main():
     
-    # retrieve command line and compute reference
+    # retrieve command line and generate output directory
     args = parse_input()
+    if not os.path.isdir(args['output']):
+        os.mkdir(args['output'])
+
+    # compute reference density
     ref_ac, ref_density = compute_reference(args['pdb_file'], args['M'], 1e10/args['resolution'])
+    ref_density = center_density(ref_density)
+    save_mrc(os.path.join(args['output'], "ref_density.mrc"), ref_density)
 
     # retrieve filenames, set up resolution array to be saved
     fnames = glob.glob(args['input'])
     resolutions = np.zeros(len(fnames))
 
     for i,fn in enumerate(fnames):
+        print(f"Calculating FSC for: {fn}")
         solution = mrcfile.open(fn).data
-        res1 = calculate_res(ref_density, solution, args['sigma'], args['resolution'], args['spacing'])
+        res1, rot_density1 = calculate_res(ref_density, solution, args['sigma'], args['resolution'], args['spacing'])
 
         # check inverted density map
         solution = invert_handedness(fn)
-        res2 = calculate_res(ref_density, solution, args['sigma'], args['resolution'], args['spacing'])
+        res2, rot_density2 = calculate_res(ref_density, solution, args['sigma'], args['resolution'], args['spacing'])
 
         resolutions[i] = np.min(np.array([res1, res2]))
+        if res1 < res2:
+            save_mrc(os.path.join(args['output'], f"aligned{i}.mrc"), rot_density1)
+        else:
+            save_mrc(os.path.join(args['output'], f"aligned{i}.mrc"), rot_density2)
+
 
     print(f"No. density maps: {len(fnames)}")
-    print(f"mean resolution: {np.mean(resolutions):.2f}")
-    print(f"min. resolution: {np.min(resolutions):.2f}")
+    print(f"mean resolution: {np.mean(resolutions[resolutions!=-1]):.2f}")
+    print(f"min. resolution: {np.min(resolutions[resolutions!=-1]):.2f}")
 
-    np.save(args['output'], resolutions)
+    np.save(os.path.join(args['output'], "resolutions.npy"), resolutions)
     return
 
 
