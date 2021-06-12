@@ -125,6 +125,84 @@ def match_orientations(generation,
     return ref_orientations[index]
 
 
+def match_orientations_mult(generation, 
+                            pixel_position_reciprocal, 
+                            reciprocal_extent, 
+                            slices_,
+                            ac_mult,
+                            n_ref_orientations,
+                            nbatches=1,
+                            order=0,
+                            true_orientations=None):
+    """
+    Determine orientations of the data images by matching to reference images
+    computed by randomly slicing through the diffraction intensities esimated
+    from the autocorrelation volumes. Alignment is done by minimizing nearest
+    neighbors. Optionally batch the calculation over the model slices.
+    
+    
+    :param generation: current iteration
+    :param pixel_position_reciprocal: pixels' reciprocal space positions, array of shape
+        (3,n_panels,n_pixels_per_panel)
+    :param reciprocal_extent: reciprocal space magnitude of highest resolution pixel
+    :param slices_: intensity data of shape (n_images,n_panels,n_pixels_per_panel)
+    :param ac_mult: 4d array of autocorrelation volumes of shape (n_volumes,M,M,M)
+    :param n_ref_orientations: number of reference orientations to compute from autocorrelation
+    :param nbatches: number of batches to divide model slices into
+    :param order: power for s-weighting, uniform weights if zero 
+    :param true_orientations: quaternion orientations of slices_, used for debugging
+    :return orientations: array of quaternions matched to slices_
+    :return conformations: indexing array matching each image in slices_ to the volume in ac_mult
+    """
+
+    quot, remainder = divmod(n_ref_orientations, nbatches)
+    if remainder != 0:
+        n_ref_orientations = (quot + 1) * nbatches 
+        quot, remainder = divmod(n_ref_orientations, nbatches)
+
+    # flatten each image in data
+    n_det_pixels = pixel_position_reciprocal.shape[-1]
+    slices_ = slices_.reshape((slices_.shape[0], n_det_pixels))
+    n_conformations = len(ac_mult)
+
+    # get reference orientations 
+    ref_orientations = sk.get_uniform_quat(n_ref_orientations, True).astype(np.float32)
+    if true_orientations is not None:
+        ref_orientations = np.vstack((ref_orientations[:-len(true_orientations)], true_orientations))
+        np.random.shuffle(ref_orientations)
+
+    # align all data images with each autocorrelation volume
+    indices, min_dists = np.zeros((n_conformations, slices_.shape[0])), np.zeros((n_conformations, slices_.shape[0]))
+    for idx,ac in enumerate(ac_mult):
+        # compute distances to data slices for each batch of model slices
+        distances = np.zeros((n_ref_orientations, slices_.shape[0]))
+        for nb in range(nbatches):
+            start, end = nb*quot, (nb+1)*quot
+            model_slices = compute_slices(ref_orientations[start:end], pixel_position_reciprocal, reciprocal_extent, ac)
+            model_slices = model_slices.reshape((end - start, n_det_pixels))
+
+            # scale model_slices
+            data_model_scaling_ratio = slices_.std() / model_slices.std()
+            print(f"Data/Model std ratio: {data_model_scaling_ratio}.", flush=True)
+            model_slices *= data_model_scaling_ratio
+
+            # compute indices of matches between reference and data orientations
+            weights = generate_weights(pixel_position_reciprocal, order=order)
+            distances[start:end,:] = calc_eudist(model_slices * weights, slices_ * weights)
+
+        indices[idx], min_dists[idx] = np.argmin(distances, axis=0), np.min(distances, axis=0)
+
+    # assign each image to the autocorrelation volume with which it has the highest CC
+    conformations = np.argmin(min_dists, axis=0)
+    
+    # assign best-fit quaternions to each image
+    index = np.zeros(slices_.shape[0]).astype(int)
+    for conf in range(n_conformations):
+        index[np.where(conformations==conf)[0]] = indices[conf,np.where(conformations==conf)[0]]
+        
+    return ref_orientations[index], conformations
+
+
 def match_orientations_batch(generation, 
                              pixel_position_reciprocal, 
                              reciprocal_extent, 
