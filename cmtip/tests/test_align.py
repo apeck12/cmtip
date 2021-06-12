@@ -27,6 +27,20 @@ class TestAlignment(object):
         ivol = np.square(np.abs(cls.data['volume']))
         cls.ac = np.fft.fftshift(np.abs(np.fft.ifftn(ivol))).astype(np.float32)
 
+        # data for multiple conformations test
+        args['det_info'] = ("128", "0.08", "0.04")
+        args['n_images'] = 2
+
+        args['pdb_file'] = os.path.join(os.path.dirname(__file__), '../../examples/input/2cex_a.pdb')
+        cls.data_c1 = simulate_images(args)
+        ivol = np.square(np.abs(cls.data_c1['volume']))
+        cls.ac_c1 = np.fft.fftshift(np.abs(np.fft.ifftn(ivol))).astype(np.float32)
+
+        args['pdb_file'] = os.path.join(os.path.dirname(__file__), '../../examples/input/2cex_b.pdb')
+        cls.data_c2 = simulate_images(args)
+        ivol = np.square(np.abs(cls.data_c2['volume']))
+        cls.ac_c2 = np.fft.fftshift(np.abs(np.fft.ifftn(ivol))).astype(np.float32)
+
     def test_match_orientations(self):
         """ 
         Test that alignment.match_orientations finds the correct quaternions from
@@ -81,3 +95,34 @@ class TestAlignment(object):
         ax4.set_ylabel("Reference image", fontsize=12)
     
         f.savefig("test_compute_slices.png", dpi=300, bbox_inches='tight')
+
+    def test_match_orientations_mult(self):
+        """
+        Test that alignment.match_orientations_mult finds the correct quaternions and
+        conformations from a mix of correct and random quaternions and two ac volumes.
+        """
+        # compile and scramble images from each dataset
+        slices_ = np.vstack((self.data_c1['intensities'], self.data_c2['intensities']))
+        reindex = np.arange(len(slices_))
+        np.random.shuffle(reindex)
+        slices_ = slices_[reindex]
+
+        # compile true orientations; assemble true conformation assignments
+        true_orientations = np.vstack((self.data_c1['orientations'], self.data_c2['orientations']))
+        true_confs = np.zeros(len(slices_)).astype(int)
+        true_confs[int(len(slices_)/2):] = 1
+        true_confs = true_confs[reindex]
+
+        # perform alignment to each autocorrelation volume
+        quats, confs = alignment.match_orientations_mult(0, 
+                                                         self.data_c1['pixel_position_reciprocal'], 
+                                                         self.data_c1['reciprocal_extent'],
+                                                         slices_,
+                                                         [self.ac_c1, self.ac_c2],
+                                                         50,
+                                                         nbatches=2,
+                                                         order=-2,
+                                                         true_orientations=true_orientations)
+
+        assert np.all(true_orientations[reindex] - quats) == 0
+        assert np.all(true_confs - confs) == 0

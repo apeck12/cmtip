@@ -36,6 +36,48 @@ def phase_mpi(comm, generation, ac, support_=None, rho_=None, n_iterations=10, n
     return ac_phased, support_, rho_
 
 
+def phase_mpi_mult(comm, generation, ac_mult, support_=None, rho_=None, n_iterations=10, nER=50, nHIO=25):
+    """
+    Wrapper for phasing using MPI with multiple conformations. Currently phasing 
+    autocorrelation volumes sequentially.
+    
+    :param comm: MPI intracommunicator instance
+    :param generation: current iteration of M-TIP loop
+    :param ac_mult: 4d array of autocorrelation volumes of shape (n_volumes,M,M,M)
+    :param support_: initial object support
+    :param rho_: initial density estimate
+    :param n_iterations: number of cycles of ER/HIO/ER/shrinkwrap to perform
+    :param nER: number of ER iterations to perform for each ER loop
+    :param nHIO: number of HIO iterations to perofrm for each HIO loop
+    :return ac_phased: updated autocorrelation estimates
+    :return support_: updated support estimates
+    :return rho_: updated density estimates
+    """
+    if comm.rank == 0:
+        # set up empty arrays for support and rho if None
+        if support_ is None:
+            support_ = np.zeros(ac_mult.shape, order="F")
+        if rho_ is None:
+            rho_ = np.zeros(ac_mult.shape, order="F")
+            
+        # sequentially phase each autocorrelation volume 
+        ac_phased = np.zeros(ac_mult.shape, order="F")
+        for i,ac in enumerate(ac_mult):
+            if np.all(support_[i])==0:
+                ac_phased[i], support_[i], rho_[i] = phase_base.phase(generation, ac_mult[i], 
+                                                                      n_iterations=n_iterations, nER=nER, nHIO=nHIO)
+            else:
+                ac_phased[i], support_[i], rho_[i] = phase_base.phase(generation, ac_mult[i], 
+                                                                      support_=support_[i], rho_=rho_[i], 
+                                                                      n_iterations=n_iterations, nER=nER, nHIO=nHIO)
+    else:
+        ac_phased = np.zeros(ac_mult.shape, order="F")
+        support_, rho_ = None, None
+    
+    comm.Bcast(ac_phased, root=0)
+    return ac_phased, support_, rho_
+
+
 def resize_mpi(comm, support_, rho_, M_next, r_extent_orig, r_extent_next):
     """
     Wrapper for resizing the support and density volumes.
@@ -66,3 +108,4 @@ def resize_mpi(comm, support_, rho_, M_next, r_extent_orig, r_extent_next):
         support_, rho_ = None, None
     
     return support_, rho_
+

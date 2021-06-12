@@ -6,7 +6,7 @@ Functions for data pre-processing: loading, binning, cutting resolution,
 reassembling data from panels to detector shape.
 """
 
-def load_h5(input_file, start=0, end=None, load_ivol=False):
+def load_h5(input_file, start=0, end=None, load_ivol=False, load_confs=False):
     """
     Load h5 input file of simulated data. If neither start nor end indices
     are given, load all images.
@@ -15,6 +15,7 @@ def load_h5(input_file, start=0, end=None, load_ivol=False):
     :param start: index of the first image to load
     :param end: index of the last image to load
     :param load_ivol: whether to load the diffraction volume, optional
+    :param load_confs: whether to load the conformations, optional
     :return data: dict containing contents of input h5 file
     """
     print("Loading data from %s" %input_file)  
@@ -47,10 +48,12 @@ def load_h5(input_file, start=0, end=None, load_ivol=False):
     data['pixel_index_map'] = np.zeros(det_shape + (2,)).astype(int)
     if load_ivol:
         data['volume'] = np.zeros((151,151,151), dtype=np.complex128) 
-    
+    if load_confs:
+        data['conformations'] = np.zeros(n_images).astype(int)
+
     with h5py.File(input_file, 'r') as f:
         for key in data.keys():
-            if key in ['orientations', itype]:
+            if key in ['orientations', itype, 'conformations']:
                 data[key][:] = f[key][start:end]
             else:
                 data[key][:] = f[key][:]

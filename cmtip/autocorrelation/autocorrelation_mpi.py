@@ -179,3 +179,54 @@ def solve_ac_mpi(comm, generation, pixel_position_reciprocal, reciprocal_extent,
         print(f"Keeping result from rank {ref_rank}.")
 
     return ac
+
+
+def solve_ac_mpi_mult(comm, generation, pixel_position_reciprocal, reciprocal_extent,
+                      slices_, M, n_conformations, orientations=None, conformations=None, 
+                      ac_estimate=None, use_recip_sym=True):
+    """
+    Estimate multiple autocorrelation volumes for each conformation with MPI acceleration. 
+    
+    :param comm: MPI intracommunicator instance
+    :param generation: current iteration
+    :param pixel_position_reciprocal: pixels' reciprocal space positions, array of shape
+        (3,n_panels,n_pixels_per_panel)
+    :param reciprocal_extent: reciprocal space magnitude of highest resolution pixel
+    :param slices_: intensity data of shape (n_images, n_panels, n_pixels_per_panel)
+    :param M: cubic length of autocorrelation mesh
+    :param n_conformations: number of expected conformations
+    :param orientations: n_images quaternions, if available
+    :param conformations: n_images conformation assignments, if available
+    :param ac_estimate: 4d array of autocorrelation volumes of shape (n_volumes,M,M,M)
+    :param use_recip_sym: if True, discard imaginary component of ac estimate
+    :return ac_mult: 4d array of autocorrelation volumes of shape (n_volumes,M,M,M)
+    """
+    # randomly assign each image to a conformation if none supplied
+    if conformations is None:
+        conformations = np.random.randint(low=0, high=n_conformations, size=len(slices_))
+        
+    # generate random quaternions if none supplied
+    if orientations is None:
+        orientations = sk.get_random_quat(len(slices_))
+
+    if ac_estimate is None:
+        ac_estimate = n_conformations*[None]
+
+    # for debugging purposes
+    rank = comm.rank
+    nc0, nc1 = len(np.where(conformations==0)[0]), len(np.where(conformations==1)[0])
+    print(f"Rank {rank}: {nc0} images assigned to conf0, {nc1} images assigned to conf1")
+    
+    ac_mult = np.zeros((n_conformations,) + (M,M,M))
+    for nc in range(n_conformations):            
+        ac_mult[nc] = solve_ac_mpi(comm, 
+                                   generation, 
+                                   pixel_position_reciprocal, 
+                                   reciprocal_extent,
+                                   slices_[conformations==nc], 
+                                   M, 
+                                   orientations=orientations[conformations==nc], 
+                                   ac_estimate=ac_estimate[nc], 
+                                   use_recip_sym=True)
+
+    return ac_mult
