@@ -19,7 +19,7 @@ def parse_input():
     parser.add_argument('-d', '--det_info', help='Detector info. Either (n_pixels, length, distance) for SimpleSquare'+
                         'or (det_type, geom_file, distance) for LCLSDetectors. det_type could be pnccd, for instance',
                         required=True, nargs=3)
-    parser.add_argument('-m', '--numParticles', help='number of particles', required=True, type=int)
+    parser.add_argument('-m', '--num_particles', help='Number of particle per shot', default=1, type=int)
     parser.add_argument('-n', '--n_images', help='Number of slices to compute', required=True, type=int)
     parser.add_argument('-q', '--quantize', help='If true, compute photons rather than intensities', action='store_true')
     parser.add_argument('-s', '--increase_factor', help='Scale factor by which to increase beam fluence', required=False, default=1, type=float)
