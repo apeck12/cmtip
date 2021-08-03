@@ -19,6 +19,7 @@ def parse_input():
     parser.add_argument('-d', '--det_info', help='Detector info. Either (n_pixels, length, distance) for SimpleSquare'+
                         'or (det_type, geom_file, distance) for LCLSDetectors. det_type could be pnccd, for instance',
                         required=True, nargs=3)
+    parser.add_argument('-m', '--num_particles', help='Number of particle per shot', default=1, type=int)
     parser.add_argument('-n', '--n_images', help='Number of slices to compute', required=True, type=int)
     parser.add_argument('-q', '--quantize', help='If true, compute photons rather than intensities', action='store_true')
     parser.add_argument('-s', '--increase_factor', help='Scale factor by which to increase beam fluence', required=False, default=1, type=float)
@@ -34,6 +35,13 @@ def setup_experiment(args):
     :param args: dict containing beam, pdb, and detector info
     :return exp: SPIExperiment object
     """
+
+    # If 'num_particles' is not in args, initialize it in args
+    # and set it equal to 1.
+    if 'num_particles' not in args.keys():
+        args['num_particles'] = 1
+
+
     beam = sk.Beam(args['beam_file'])
     if args['increase_factor'] != 1:
         beam.set_photons_per_pulse(args['increase_factor']*beam.get_photons_per_pulse())
@@ -53,8 +61,8 @@ def setup_experiment(args):
     else:
         print("Detector type not recognized. Must be pnccd, cspad, or SimpleSquare.")
     
-    exp = sk.SPIExperiment(det, beam, particle)
-    exp.set_orientations(sk.get_random_quat(args['n_images']))
+    exp = sk.SPIExperiment(det, beam, particle, n_part_per_shot=args['num_particles'])
+    exp.set_orientations(sk.get_random_quat(args['n_images'] * args['num_particles']))
     
     return exp
 
