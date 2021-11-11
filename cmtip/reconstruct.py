@@ -6,7 +6,7 @@ import h5py
 import cmtip.phasing as phaser
 from cmtip.autocorrelation import autocorrelation
 import cmtip.alignment as alignment
-from cmtip.prep_data import load_h5, clip_data
+from cmtip.prep_data import *
 
 def parse_input():
     """
@@ -17,6 +17,8 @@ def parse_input():
     parser.add_argument('-m', '--M', help='Cubic length of reconstruction volume', required=True, type=int)
     parser.add_argument('-o', '--output', help='Path to output directory', required=True, type=str)
     parser.add_argument('-n', '--niter', help='Number of MTIP iterations', required=False, type=int, default=10)
+    parser.add_argument('-t', '--n_images', help='Total number of images to process', required=False, type=int)
+    parser.add_argument('-b', '--bin_factor', help='Factor by which to bin data', required=False, type=int, default=1)
     parser.add_argument('-a', '--aligned', help='Alignment from reference quaternions', action='store_true')
 
     return vars(parser.parse_args())
@@ -55,7 +57,7 @@ def run_mtip(data, M, output, aligned=True, n_iterations=10):
     start_time = time.time()
     
     # alignment parameters
-    n_ref, res_limit = 2500, 20
+    n_ref, res_limit = 5000, 12
 
     # iteration 0: ac_estimate is unknown
     generation = 0
@@ -115,8 +117,20 @@ def main():
     if not os.path.isdir(args['output']):
         os.mkdir(args['output'])
 
-    # reconstruct density from simulated diffraction images
-    data = load_h5(args['input'])
+    # load data and bin if requested
+    if args['n_images'] is not None:
+        data = load_h5(args['input'], start=0, end=args['n_images'])
+    else:
+        data = load_h5(args['input'])
+
+    if args['bin_factor']!=1:
+        for key in ['intensities', 'pixel_position_reciprocal']:
+            data[key] = bin_data(data[key], args['bin_factor'], data['det_shape'])
+        data['reciprocal_extent'] = np.linalg.norm(data['pixel_position_reciprocal'], axis=0).max()
+        data['pixel_index_map'] = bin_pixel_index_map(data['pixel_index_map'], args['bin_factor'])
+        data['det_shape'] = data['pixel_index_map'].shape[:3]
+
+    # reconstruct density from simulated diffraction images 
     run_mtip(data, args['M'], args['output'], aligned=args['aligned'], n_iterations=args['niter'])
 
 
