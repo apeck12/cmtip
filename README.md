@@ -9,10 +9,14 @@ Current dependencies are skopi, finufft, cufinufft, and mrcfile, all of which ar
 
 Scripts have been provided for the simulation of a noise-free dataset and its reconstruction. For example, to simulate a 5k image dataset, one could run:
 
+```
 $ python simulate.py -b ./examples/input/amo86615.beam -p 3iyf.pdb -d pnccd {PATH_TO_SKOPI}/skopi/examples/input/lcls/amo86615/PNCCD::CalibV1/Camp.0:pnCCD.1/geometry/0-end.data 0.2 -n 5000 -o 3iyf_sim.h5
+```
 
 The simulation code requires a GPU. To reconstruct on a single CPU core: 
 
+```
 $ python reconstruct.py -i 3iyf_sim.h5 -t 5000 -b 2 -m 81 -n 10 -o rec
+```
 
 See docstrings for further information.
