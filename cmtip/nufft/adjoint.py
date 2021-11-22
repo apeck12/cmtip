@@ -1,5 +1,4 @@
 import numpy as np
-from cufinufft import cufinufft
 import finufft as nfft 
 
 
@@ -60,7 +59,8 @@ def adjoint_gpu(nuvect, H_, K_, L_, M, use_recip_sym=True, support=None):
     """
     
     from pycuda.gpuarray import GPUArray, to_gpu
-    import pycuda.autoinit
+    import pycuda.autoinit    
+    from cufinufft import cufinufft
     
     # make sure that points lie within permissible finufft domain
     assert np.max(np.abs(np.array([H_, K_, L_]))) < 3*np.pi

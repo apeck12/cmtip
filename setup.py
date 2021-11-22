@@ -9,7 +9,6 @@ requirements = [
     'mrcfile',
     'skopi',
     'finufft',
-    'cufinufft',
     'matplotlib',
     'setuptools'
 ]
@@ -29,4 +28,7 @@ setuptools.setup(
         "Programming Language :: Python :: 3",
         "Operating System :: OS Independent",
     ],
+    extras_require={
+        "gpu": ["cufinufft", "pycuda"],
+    },
     zip_safe=False)
