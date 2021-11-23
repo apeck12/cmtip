@@ -1,5 +1,4 @@
 import numpy as np
-from cufinufft import cufinufft
 import finufft as nfft 
 
 
@@ -58,6 +57,7 @@ def forward_gpu(ugrid, H_, K_, L_, support=None, use_recip_sym=True):
     
     from pycuda.gpuarray import GPUArray, to_gpu
     import pycuda.autoinit
+    from cufinufft import cufinufft
     
     # make sure that points lie within permissible finufft domain
     assert np.max(np.abs(np.array([H_, K_, L_]))) < 3*np.pi
