@@ -19,6 +19,7 @@ def parse_input():
     parser.add_argument('-n', '--niter', help='Number of MTIP iterations', required=False, type=int, default=10)
     parser.add_argument('-t', '--n_images', help='Total number of images to process', required=False, type=int)
     parser.add_argument('-b', '--bin_factor', help='Factor by which to bin data', required=False, type=int, default=1)
+    parser.add_argument('-g', '--use_gpu', help='Use cufinufft for GPU-accelerated NUFFT calculations', action='store_true')
     parser.add_argument('-a', '--aligned', help='Alignment from reference quaternions', action='store_true')
 
     return vars(parser.parse_args())
@@ -43,7 +44,7 @@ def save_output(generation, output, ac, rho_, orientations=None):
     return
 
 
-def run_mtip(data, M, output, aligned=True, n_iterations=10):
+def run_mtip(data, M, output, aligned=True, n_iterations=10, use_gpu=False):
     """
     Run MTIP algorithm.
     
@@ -52,12 +53,13 @@ def run_mtip(data, M, output, aligned=True, n_iterations=10):
     :param output: path to output directory
     :param aligned: if False use ground truth quaternions
     :param n_iterations: number of MTIP iterations to run, default=10
+    :param use_gpu: boolean; if True, use cufinufft for NUFFT calculations
     """  
     print("Running MTIP")
     start_time = time.time()
     
     # alignment parameters
-    n_ref, res_limit = 5000, 12
+    n_ref, res_limit = 5000, 9
 
     # iteration 0: ac_estimate is unknown
     generation = 0
@@ -71,7 +73,8 @@ def run_mtip(data, M, output, aligned=True, n_iterations=10):
                                   data['reciprocal_extent'],
                                   data['intensities'],
                                   M,
-                                  orientations=orientations)
+                                  orientations=orientations,
+                                  use_gpu=use_gpu)
     ac_phased, support_, rho_ = phaser.phase(generation, ac)
     save_output(generation, output, ac, rho_, orientations=None)
     
@@ -89,7 +92,8 @@ def run_mtip(data, M, output, aligned=True, n_iterations=10):
                                                         data['reciprocal_extent'],
                                                         intensities,
                                                         ac_phased.astype(np.float32),
-                                                        n_ref)
+                                                        n_ref,
+                                                        use_gpu=use_gpu)
         else:
             print("Using ground truth quaternions")
             orientations = data['orientations']
@@ -101,6 +105,7 @@ def run_mtip(data, M, output, aligned=True, n_iterations=10):
                                       data['intensities'],
                                       M,
                                       orientations=orientations.astype(np.float32),
+                                      use_gpu=use_gpu,
                                       ac_estimate=ac_phased.astype(np.float32))
         # phase
         ac_phased, support_, rho_ = phaser.phase(generation, ac, support_, rho_)
@@ -131,7 +136,7 @@ def main():
         data['det_shape'] = data['pixel_index_map'].shape[:3]
 
     # reconstruct density from simulated diffraction images 
-    run_mtip(data, args['M'], args['output'], aligned=args['aligned'], n_iterations=args['niter'])
+    run_mtip(data, args['M'], args['output'], aligned=args['aligned'], n_iterations=args['niter'], use_gpu=args['use_gpu'])
 
 
 if __name__ == '__main__':

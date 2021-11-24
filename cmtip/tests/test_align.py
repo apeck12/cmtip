@@ -46,16 +46,18 @@ class TestAlignment(object):
         Test that alignment.match_orientations finds the correct quaternions from
         a mix of correct and random quaternions.
         """
-        quats = alignment.match_orientations(0, 
-                                             self.data['pixel_position_reciprocal'], 
-                                             self.data['reciprocal_extent'], 
-                                             self.data['intensities'],
-                                             self.ac,
-                                             100,
-                                             nbatches=2,
-                                             true_orientations=self.data['orientations'])
+        for use_gpu in [True, False]:
+            quats = alignment.match_orientations(0, 
+                                                 self.data['pixel_position_reciprocal'], 
+                                                 self.data['reciprocal_extent'], 
+                                                 self.data['intensities'],
+                                                 self.ac,
+                                                 100,
+                                                 nbatches=2,
+                                                 use_gpu=use_gpu,
+                                                 true_orientations=self.data['orientations'])
     
-        assert np.all(quats - self.data['orientations'])==0
+            assert np.all(quats - self.data['orientations'])==0
     
     def test_compute_slices(self):
         """
@@ -63,38 +65,40 @@ class TestAlignment(object):
         computing the NUFFT from the ideal autocorrelation. Plot for visualization.
         """
         # quantitative check -- threshold takes into account interpolation error
-        cslices = alignment.compute_slices(self.data['orientations'],
-                                           self.data['pixel_position_reciprocal'], 
-                                           self.data['reciprocal_extent'], 
-                                           self.ac)
-        cslices = cslices.reshape(len(self.data['orientations']), self.data['n_pixels_per_image'])
+        for use_gpu,tag in zip([True, False],['gpu','cpu']):
+            cslices = alignment.compute_slices(self.data['orientations'],
+                                               self.data['pixel_position_reciprocal'], 
+                                               self.data['reciprocal_extent'], 
+                                               self.ac,
+                                               use_gpu=use_gpu)
+            cslices = cslices.reshape(len(self.data['orientations']), self.data['n_pixels_per_image'])
         
-        cc_vals = list()
-        for i in range(3):
-            for j in range(3):
-                cc_vals.append(np.corrcoef(cslices[i], self.data['intensities'][j][0].flatten())[0,1])
-        cc_vals = np.array(cc_vals).reshape(3,3)
+            cc_vals = list()
+            for i in range(3):
+                for j in range(3):
+                    cc_vals.append(np.corrcoef(cslices[i], self.data['intensities'][j][0].flatten())[0,1])
+            cc_vals = np.array(cc_vals).reshape(3,3)
 
-        assert np.allclose(np.diag(cc_vals),[1],atol=1e-3) # matching images
-        assert not np.allclose(np.triu(cc_vals, k=1),[1],atol=1e-3) # mismatched images
+            assert np.allclose(np.diag(cc_vals),[1],atol=1e-3) # matching images
+            assert not np.allclose(np.triu(cc_vals, k=1),[1],atol=1e-3) # mismatched images
 
-        # also plot for visual inspection
-        f, ((ax1,ax2,ax3), (ax4,ax5,ax6)) = plt.subplots(2,3,figsize=(9,6))
+            # also plot for visual inspection
+            f, ((ax1,ax2,ax3), (ax4,ax5,ax6)) = plt.subplots(2,3,figsize=(9,6))
 
-        for i,ax in enumerate([ax1,ax2,ax3]):
-            ax.imshow(cslices[i].reshape(self.data['det_shape'][1:]), vmax=cslices.mean())
-            ax.set_title("Orientation %i" %i, fontsize=12)
-        for i,ax in enumerate([ax4,ax5,ax6]):
-            ax.imshow(self.data['intensities'][i][0].reshape(self.data['det_shape'][1:]), vmax=self.data['intensities'].mean())
+            for i,ax in enumerate([ax1,ax2,ax3]):
+                ax.imshow(cslices[i].reshape(self.data['det_shape'][1:]), vmax=cslices.mean())
+                ax.set_title("Orientation %i" %i, fontsize=12)
+            for i,ax in enumerate([ax4,ax5,ax6]):
+                ax.imshow(self.data['intensities'][i][0].reshape(self.data['det_shape'][1:]), vmax=self.data['intensities'].mean())
 
-        for ax in [ax1,ax2,ax3,ax4,ax5,ax6]:
-            ax.set_xticks([])
-            ax.set_yticks([])
+            for ax in [ax1,ax2,ax3,ax4,ax5,ax6]:
+                ax.set_xticks([])
+                ax.set_yticks([])
 
-        ax1.set_ylabel("Sliced image", fontsize=12)
-        ax4.set_ylabel("Reference image", fontsize=12)
+            ax1.set_ylabel("Sliced image", fontsize=12)
+            ax4.set_ylabel("Reference image", fontsize=12)
     
-        f.savefig("test_compute_slices.png", dpi=300, bbox_inches='tight')
+            f.savefig(f"test_compute_slices_{tag}.png", dpi=300, bbox_inches='tight')
 
     def test_match_orientations_mult(self):
         """
@@ -114,15 +118,17 @@ class TestAlignment(object):
         true_confs = true_confs[reindex]
 
         # perform alignment to each autocorrelation volume
-        quats, confs = alignment.match_orientations_mult(0, 
-                                                         self.data_c1['pixel_position_reciprocal'], 
-                                                         self.data_c1['reciprocal_extent'],
-                                                         slices_,
-                                                         [self.ac_c1, self.ac_c2],
-                                                         50,
-                                                         nbatches=2,
-                                                         order=-2,
-                                                         true_orientations=true_orientations)
+        for use_gpu in [True, False]:
+            quats, confs = alignment.match_orientations_mult(0, 
+                                                             self.data_c1['pixel_position_reciprocal'], 
+                                                             self.data_c1['reciprocal_extent'],
+                                                             slices_,
+                                                             [self.ac_c1, self.ac_c2],
+                                                             50,
+                                                             nbatches=2,
+                                                             order=-2,
+                                                             use_gpu=use_gpu,
+                                                             true_orientations=true_orientations)
 
-        assert np.all(true_orientations[reindex] - quats) == 0
-        assert np.all(true_confs - confs) == 0
+            assert np.all(true_orientations[reindex] - quats) == 0
+            assert np.all(true_confs - confs) == 0

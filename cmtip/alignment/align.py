@@ -36,7 +36,7 @@ def calc_eudist(model_slices, slices):
     return euDist
 
 
-def compute_slices(orientations, pixel_position_reciprocal, reciprocal_extent, ac):
+def compute_slices(orientations, pixel_position_reciprocal, reciprocal_extent, ac, use_gpu=False):
     """
     Compute slices through the diffraction volume estimated from the autocorrelation.
     
@@ -44,6 +44,7 @@ def compute_slices(orientations, pixel_position_reciprocal, reciprocal_extent, a
     :param pixel_position_reciprocal: pixels' reciprocal space positions
     :param reciprocal_extent: reciprocal space magnitude of highest resolution pixel
     :param ac: 3d array of autocorrelation
+    :param use_gpu: boolean; if True, use GPU-based cufinufft rather than finufft
     :return model_slices: flattened array of requested model slices
     """
     # compute rotated reciprocal space positions
@@ -56,7 +57,10 @@ def compute_slices(orientations, pixel_position_reciprocal, reciprocal_extent, a
     L_ = L.astype(np.float32).flatten() / reciprocal_extent * np.pi 
 
     # compute model slices from the NUFFT of the autocorrelation
-    model_slices = nufft.forward_cpu(ac, H_, K_, L_, support=None, use_recip_sym=True).real    
+    if use_gpu:
+        model_slices = nufft.forward_gpu(ac, H_, K_, L_, support=None, use_recip_sym=True).real
+    else:
+        model_slices = nufft.forward_cpu(ac, H_, K_, L_, support=None, use_recip_sym=True).real    
     
     return model_slices
 
@@ -69,6 +73,7 @@ def match_orientations(generation,
                        n_ref_orientations,
                        nbatches=1,
                        order=0,
+                       use_gpu=False,
                        true_orientations=None):
     """
     Determine orientations of the data images by matching to reference images
@@ -85,6 +90,7 @@ def match_orientations(generation,
     :param n_ref_orientations: number of reference orientations to compute from autocorrelation
     :param nbatches: number of batches to divide model slices into
     :param order: power for s-weighting, uniform weights if zero 
+    :param use_gpu: boolean; if True, use GPU-based cufinufft rather than finufft 
     :param true_orientations: quaternion orientations of slices_, used for debugging
     :return ref_orientations: array of quaternions matched to slices_
     """
@@ -108,7 +114,8 @@ def match_orientations(generation,
     distances = np.zeros((n_ref_orientations, slices_.shape[0]))
     for nb in range(nbatches):
         start, end = nb*quot, (nb+1)*quot
-        model_slices = compute_slices(ref_orientations[start:end], pixel_position_reciprocal, reciprocal_extent, ac)
+        model_slices = compute_slices(ref_orientations[start:end], pixel_position_reciprocal, 
+                                      reciprocal_extent, ac, use_gpu=use_gpu)
         model_slices = model_slices.reshape((end - start, n_det_pixels))
 
         # scale model_slices
@@ -133,6 +140,7 @@ def match_orientations_mult(generation,
                             n_ref_orientations,
                             nbatches=1,
                             order=0,
+                            use_gpu=False,
                             true_orientations=None):
     """
     Determine orientations of the data images by matching to reference images
@@ -150,6 +158,7 @@ def match_orientations_mult(generation,
     :param n_ref_orientations: number of reference orientations to compute from autocorrelation
     :param nbatches: number of batches to divide model slices into
     :param order: power for s-weighting, uniform weights if zero 
+    :param use_gpu: boolean; if True, use GPU-based cufinufft rather than finufft 
     :param true_orientations: quaternion orientations of slices_, used for debugging
     :return orientations: array of quaternions matched to slices_
     :return conformations: indexing array matching each image in slices_ to the volume in ac_mult
@@ -178,7 +187,8 @@ def match_orientations_mult(generation,
         distances = np.zeros((n_ref_orientations, slices_.shape[0]))
         for nb in range(nbatches):
             start, end = nb*quot, (nb+1)*quot
-            model_slices = compute_slices(ref_orientations[start:end], pixel_position_reciprocal, reciprocal_extent, ac)
+            model_slices = compute_slices(ref_orientations[start:end], pixel_position_reciprocal, 
+                                          reciprocal_extent, ac, use_gpu=use_gpu)
             model_slices = model_slices.reshape((end - start, n_det_pixels))
 
             # scale model_slices

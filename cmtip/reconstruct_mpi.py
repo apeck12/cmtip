@@ -26,6 +26,7 @@ def parse_input():
     parser.add_argument('-ar', '--a_nref', help='Number of model slices for alignment at each resolution', required=True, nargs='+',type=int)
     parser.add_argument('-ab', '--a_nbatches', help='Number of batches for alignment at each resolution', required=True, nargs='+',type=int)
     parser.add_argument('-aw', '--a_weighting', help='Alignment parameters: (res, order)', required=False, nargs=2, type=float, default=[8.0,-2])
+    parser.add_argument('-g', '--use_gpu', help='Use cufinufft for GPU-accelerated NUFFT calculations', action='store_true')
     parser.add_argument('-a', '--aligned', help='Alignment from reference quaternions', action='store_true')
 
     return vars(parser.parse_args())
@@ -46,7 +47,7 @@ def save_output(generation, output, ac, rho_):
     return
 
 
-def run_mtip_mpi(comm, data, M, output, a_params, aligned=True, n_iterations=10, res_limit_ac=None):
+def run_mtip_mpi(comm, data, M, output, a_params, use_gpu=False, aligned=True, n_iterations=10, res_limit_ac=None):
     """
     Run MTIP algorithm.
     
@@ -54,6 +55,7 @@ def run_mtip_mpi(comm, data, M, output, a_params, aligned=True, n_iterations=10,
     :param data: dictionary containing images, pixel positions, orientations, etc.
     :param M: array of length n_iterations of cubic autocorrelation volume
     :param output: path to output directory
+    :param use_gpu: boolean; if True, use GPU-based NUFFT calculations
     :param a_params: dictionary of alignment parameters
     :param aligned: if False use ground truth quaternions
     :param n_iterations: number of MTIP iterations to run, default=10
@@ -91,7 +93,8 @@ def run_mtip_mpi(comm, data, M, output, a_params, aligned=True, n_iterations=10,
                                       reciprocal_extent,
                                       intensities,
                                       M[generation],
-                                      orientations=orientations)
+                                      orientations=orientations,
+                                      use_gpu=use_gpu)
     ac_phased, support_, rho_ = phaser.phase_mpi(comm, generation, ac)
     if rank == 0:
         save_output(generation, output, ac, rho_)
@@ -114,6 +117,7 @@ def run_mtip_mpi(comm, data, M, output, a_params, aligned=True, n_iterations=10,
                                                         ac_phased.astype(np.float32),
                                                         a_params['n_ref'][generation],
                                                         nbatches=a_params['nbatches'][generation],
+                                                        use_gpu=use_gpu,
                                                         order=a_params['order'])
             
             # save orientations from each rank (probably faster than broadcasting?)
@@ -144,7 +148,8 @@ def run_mtip_mpi(comm, data, M, output, a_params, aligned=True, n_iterations=10,
                                           reciprocal_extent,
                                           intensities,
                                           M[generation],
-                                          orientations=orientations)
+                                          orientations=orientations,
+                                          use_gpu=use_gpu)
         # phase
         ac_phased, support_, rho_ = phaser.phase_mpi(comm, generation, ac, support_, rho_)
         if rank == 0:
@@ -191,7 +196,7 @@ def main():
         data['det_shape'] = data['pixel_index_map'].shape[:3]
 
     # run MTIP to reconstruct density from simulated diffraction images
-    run_mtip_mpi(comm, data, args['M'], args['output'], aligned=args['aligned'], 
+    run_mtip_mpi(comm, data, args['M'], args['output'], aligned=args['aligned'], use_gpu=args['use_gpu'],
                  n_iterations=len(args['M']), res_limit_ac=args['res_limit_ac'], a_params=args['a_params'])
 
     # compile orientations arrays and tidy up

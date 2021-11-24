@@ -114,7 +114,7 @@ def setup_linops(H, K, L, data,
                  ac_support, weights, x0,
                  M, Mtot, N, reciprocal_extent,
                  alambda, rlambda, flambda,
-                 use_recip_sym=True):
+                 use_gpu=False, use_recip_sym=True):
     """Define W and d parts of the W @ x = d problem.
 
     W = al*A_adj*Da*A + rl*I  + fl*F_adj*Df*F
@@ -139,8 +139,12 @@ def setup_linops(H, K, L, data,
 
     # Using upsampled convolution technique instead of ADA
     M_ups = M * 2
-    ugrid_conv = nufft.adjoint_cpu(np.ones_like(data), H_, K_, L_, 
-                                   M_ups, use_recip_sym=use_recip_sym, support=None)
+    if use_gpu:
+        ugrid_conv = nufft.adjoint_gpu(np.ones_like(data), H_, K_, L_,
+                                       M_ups, use_recip_sym=use_recip_sym, support=None)
+    else:
+        ugrid_conv = nufft.adjoint_cpu(np.ones_like(data), H_, K_, L_, 
+                                       M_ups, use_recip_sym=use_recip_sym, support=None)
     F_ugrid_conv_ = np.fft.fftn(np.fft.ifftshift(ugrid_conv)) #/ Mtot
 
     def W_matvec(uvect):
@@ -156,8 +160,12 @@ def setup_linops(H, K, L, data,
         matvec=W_matvec)
 
     nuvect_Db = data * weights
-    uvect_ADb = nufft.adjoint_cpu(nuvect_Db, H_, K_, L_, M, 
-                                  support=ac_support, use_recip_sym=use_recip_sym).flatten()
+    if use_gpu:
+        uvect_ADb = nufft.adjoint_gpu(nuvect_Db, H_, K_, L_, M, 
+                                      support=ac_support, use_recip_sym=use_recip_sym).flatten()
+    else:
+        uvect_ADb = nufft.adjoint_cpu(nuvect_Db, H_, K_, L_, M,
+                                      support=ac_support, use_recip_sym=use_recip_sym).flatten()
     if np.sum(np.isnan(uvect_ADb)) > 0:
         print("Warning: nans in the adjoint calculation; intensities may be too large", flush=True)
     d = alambda*uvect_ADb + rlambda*x0
@@ -172,6 +180,7 @@ def solve_ac(generation,
              M,
              orientations=None,
              ac_estimate=None,
+             use_gpu=False,
              use_recip_sym=True):
     """
     Estimate the autocorrelation by solving a sparse linear system that maximizes the 
@@ -186,6 +195,7 @@ def solve_ac(generation,
     :param M: cubic length of autocorrelation mesh
     :param orientations: n_images quaternions, if available
     :param ac_estimate: 3d array of estimated autocorrelation, if available
+    :param use_gpu: boolean; if True, use cufinufft rather than finufft
     :param use_recip_sym: if True, discard imaginary component of ac estimate
     :return ac: 3d array solution for autocorrelation 
     """
@@ -225,7 +235,7 @@ def solve_ac(generation,
                         ac_support, weights, x0,
                         M, Mtot, N, reciprocal_extent,
                         alambda, rlambda, flambda,
-                        use_recip_sym=use_recip_sym)
+                        use_gpu=use_gpu, use_recip_sym=use_recip_sym)
     ret, info = cg(W, d, x0=x0, maxiter=maxiter, callback=callback)
     ac = ret.reshape((M,)*3)
     if use_recip_sym:
