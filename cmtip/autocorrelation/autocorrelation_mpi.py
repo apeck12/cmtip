@@ -34,7 +34,7 @@ def reduce_bcast(comm, vect):
 
 
 def setup_linops_mpi(comm, H, K, L, data, ac_support, weights, x0, 
-                     M, Mtot, N, reciprocal_extent, alambda, rlambda, flambda, use_recip_sym=True):
+                     M, Mtot, N, reciprocal_extent, alambda, rlambda, flambda, use_gpu=False, use_recip_sym=True):
     """Define W and d parts of the W @ x = d problem.
     W = al*A_adj*Da*A + rl*I  + fl*F_adj*Df*F
     d = al*A_adj*Da*b + rl*x0 + 0
@@ -58,8 +58,12 @@ def setup_linops_mpi(comm, H, K, L, data, ac_support, weights, x0,
 
     # Using upsampled convolution technique instead of ADA
     M_ups = M * 2
-    ugrid_conv = nufft.adjoint_cpu(np.ones_like(data), H_, K_, L_, 
-                                   M_ups, use_recip_sym=use_recip_sym, support=None)
+    if use_gpu:
+        ugrid_conv = nufft.adjoint_gpu(np.ones_like(data), H_, K_, L_,
+                                       M_ups, use_recip_sym=use_recip_sym, support=None)
+    else:
+        ugrid_conv = nufft.adjoint_cpu(np.ones_like(data), H_, K_, L_, 
+                                       M_ups, use_recip_sym=use_recip_sym, support=None)
     ugrid_conv = reduce_bcast(comm, ugrid_conv)
     F_ugrid_conv_ = np.fft.fftn(np.fft.ifftshift(ugrid_conv)) 
 
@@ -76,8 +80,12 @@ def setup_linops_mpi(comm, H, K, L, data, ac_support, weights, x0,
         matvec=W_matvec)
 
     nuvect_Db = data * weights
-    uvect_ADb = nufft.adjoint_cpu(nuvect_Db, H_, K_, L_, M, 
-                                  support=ac_support, use_recip_sym=use_recip_sym).flatten()
+    if use_gpu:
+        uvect_ADb = nufft.adjoint_gpu(nuvect_Db, H_, K_, L_, M,
+                                      support=ac_support, use_recip_sym=use_recip_sym).flatten()
+    else:
+        uvect_ADb = nufft.adjoint_cpu(nuvect_Db, H_, K_, L_, M, 
+                                      support=ac_support, use_recip_sym=use_recip_sym).flatten()
     uvect_ADb = reduce_bcast(comm, uvect_ADb)
 
     if np.sum(np.isnan(uvect_ADb)) > 0:
@@ -88,7 +96,7 @@ def setup_linops_mpi(comm, H, K, L, data, ac_support, weights, x0,
 
 
 def solve_ac_mpi(comm, generation, pixel_position_reciprocal, reciprocal_extent,
-                 slices_, M, orientations=None, ac_estimate=None, use_recip_sym=True):
+                 slices_, M, orientations=None, ac_estimate=None, use_gpu=False, use_recip_sym=True):
     """
     Estimate the autocorrelation volume using MPI. 
     
@@ -101,6 +109,7 @@ def solve_ac_mpi(comm, generation, pixel_position_reciprocal, reciprocal_extent,
     :param M: cubic length of autocorrelation mesh
     :param orientations: n_images quaternions, if available
     :param ac_estimate: 3d array of estimated autocorrelation, if available
+    :param use_gpu: boolean; if True use cufinufft rather than finufft
     :param use_recip_sym: if True, discard imaginary component of ac estimate
     :return ac: 3d array solution for autocorrelation from top-scoring rank
     """
@@ -142,7 +151,7 @@ def solve_ac_mpi(comm, generation, pixel_position_reciprocal, reciprocal_extent,
                             ac_support, weights, x0,
                             M, Mtot, N, reciprocal_extent,
                             alambda, rlambda, flambda,
-                            use_recip_sym=use_recip_sym)
+                            use_gpu=use_gpu, use_recip_sym=use_recip_sym)
     ret, info = cg(W, d, x0=x0, maxiter=maxiter, callback=callback)
 
     # assess which rank to keep by analyzing converged solution and residuals
@@ -183,7 +192,7 @@ def solve_ac_mpi(comm, generation, pixel_position_reciprocal, reciprocal_extent,
 
 def solve_ac_mpi_mult(comm, generation, pixel_position_reciprocal, reciprocal_extent,
                       slices_, M, n_conformations, orientations=None, conformations=None, 
-                      ac_estimate=None, use_recip_sym=True):
+                      ac_estimate=None, use_gpu=False, use_recip_sym=True):
     """
     Estimate multiple autocorrelation volumes for each conformation with MPI acceleration. 
     
@@ -198,6 +207,7 @@ def solve_ac_mpi_mult(comm, generation, pixel_position_reciprocal, reciprocal_ex
     :param orientations: n_images quaternions, if available
     :param conformations: n_images conformation assignments, if available
     :param ac_estimate: 4d array of autocorrelation volumes of shape (n_volumes,M,M,M)
+    :param use_gpu: boolean; if True, use cufinufft rather than finufft
     :param use_recip_sym: if True, discard imaginary component of ac estimate
     :return ac_mult: 4d array of autocorrelation volumes of shape (n_volumes,M,M,M)
     """
@@ -227,6 +237,7 @@ def solve_ac_mpi_mult(comm, generation, pixel_position_reciprocal, reciprocal_ex
                                    M, 
                                    orientations=orientations[conformations==nc], 
                                    ac_estimate=ac_estimate[nc], 
-                                   use_recip_sym=True)
+                                   use_gpu=use_gpu,
+                                   use_recip_sym=use_recip_sym)
 
     return ac_mult
