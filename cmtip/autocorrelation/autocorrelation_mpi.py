@@ -48,6 +48,14 @@ def setup_linops_mpi(comm, H, K, L, data, ac_support, weights, x0,
         b the data
         x0 the initial guess (ac_estimate)
     """
+    # get device ID if using GPU
+    if use_gpu:
+        #import pycuda.autoinit
+        import pycuda.driver as drv
+        drv.init()
+        device_id = comm.rank % drv.Device.count()
+        print(f"Setting up AC solver on GPU device ID {device_id}")
+
     # prepare for NUFFT calculation: flatten, limit range, convert dtype
     H_ = H.flatten().astype(np.float32) / reciprocal_extent * np.pi 
     K_ = K.flatten().astype(np.float32) / reciprocal_extent * np.pi 
@@ -60,7 +68,7 @@ def setup_linops_mpi(comm, H, K, L, data, ac_support, weights, x0,
     M_ups = M * 2
     if use_gpu:
         ugrid_conv = nufft.adjoint_gpu(np.ones_like(data), H_, K_, L_,
-                                       M_ups, use_recip_sym=use_recip_sym, support=None)
+                                       M_ups, use_recip_sym=use_recip_sym, support=None, device_id=device_id)
     else:
         ugrid_conv = nufft.adjoint_cpu(np.ones_like(data), H_, K_, L_, 
                                        M_ups, use_recip_sym=use_recip_sym, support=None)
@@ -82,7 +90,7 @@ def setup_linops_mpi(comm, H, K, L, data, ac_support, weights, x0,
     nuvect_Db = data * weights
     if use_gpu:
         uvect_ADb = nufft.adjoint_gpu(nuvect_Db, H_, K_, L_, M,
-                                      support=ac_support, use_recip_sym=use_recip_sym).flatten()
+                                      support=ac_support, use_recip_sym=use_recip_sym, device_id=device_id).flatten()
     else:
         uvect_ADb = nufft.adjoint_cpu(nuvect_Db, H_, K_, L_, M, 
                                       support=ac_support, use_recip_sym=use_recip_sym).flatten()
