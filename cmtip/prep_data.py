@@ -62,14 +62,22 @@ def load_h5(input_file, start=0, end=None, load_ivol=False):
     # retrieve data arrays
     with h5py.File(input_file, 'r') as f:
         for key in ['pixel_position_reciprocal', 'pixel_index_map']:
-            data[key][:] = f[key][:]
+            try:
+                data[key][:] = f[key][:]
+            except ValueError:
+                print(f"Detected a spinifel-style dataset, tranposing {key} axes")
+                data[key] = np.moveaxis(f[key][:], -1, 0)
         if load_ivol:
             data['volume'][:] = f[key][:]
         for key in dsets:
             if key == 'photons' or key == 'intensities':
                 data['intensities'][:] = f[key][start:end]
             else:
-                data[key][:] = f[key][start:end]
+                try:
+                    data[key][:] = f[key][start:end]
+                except ValueError:
+                    print(f"Detected a spinifel-style dataset, flattening one dimension of {key}")
+                    data[key][:] = f[key][start:end].reshape(data[key].shape[0], data[key].shape[-1])
 
     # flatten each image and corresponding positions in reciprocal space
     data['intensities'] = data['intensities'].reshape(attrs['n_images'],1,attrs['n_pixels_per_image'])
