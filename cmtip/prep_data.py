@@ -6,71 +6,87 @@ Functions for data pre-processing: loading, binning, cutting resolution,
 reassembling data from panels to detector shape.
 """
 
-def load_h5(input_file, start=0, end=None, load_ivol=False, load_confs=False):
+def load_h5(input_file, start=0, end=None, load_ivol=False):
     """
     Load h5 input file of simulated data. If neither start nor end indices
-    are given, load all images.
-
+    are given, load all images. If conformations and / or orientations are 
+    available, load those as well. Data keys are flattened upon loading,
+    and single precision is used.
+    
     :param input_file: input h5 file
     :param start: index of the first image to load
     :param end: index of the last image to load
     :param load_ivol: whether to load the diffraction volume, optional
-    :param load_confs: whether to load the conformations, optional
     :return data: dict containing contents of input h5 file
     """
     print("Loading data from %s" %input_file)  
-    data = dict()
+    data, attrs, dsets = dict(), dict(), list()
     
     # retrieve attributes
     with h5py.File(input_file, 'r') as f:
-        n_images = f.attrs['n_images']
-        n_pixels_per_image = f.attrs['n_pixels_per_image']
-        reciprocal_extent = f.attrs['reciprocal_extent']
-        det_dist = f.attrs['det_distance']
-        det_shape = tuple(f.attrs['det_shape'])
-        if 'intensities' in list(f.keys()):
-            itype = 'intensities'
-        elif 'photons' in list(f.keys()):
-            itype = 'photons'
-        else:
-            print("Unrecognized data type; should be photons or intensities")
-            sys.exit()
-    
+        # retrieve attributes, first checking if stored in h5 file
+        attributes = (list(f.attrs.keys()))
+        for key in ['n_images', 'n_pixels_per_image', 'det_shape']:
+            if key in attributes:
+                if key == 'det_shape':
+                    attrs[key] = tuple(f.attrs[key])
+                else:
+                    attrs[key] = f.attrs[key]
+
+        # otherwise get this info from the dataset keys
+        for key in list(f.keys()):
+            if key == 'intensities' or key == 'photons':
+                attrs['n_images'] = f[key].shape[0]
+                attrs['det_shape'] = f[key].shape[1:]
+                attrs['n_pixels_per_image'] = np.prod(np.array(attrs['det_shape']))
+                dsets.append(key)
+            if key == 'orientations' or key == 'conformations':
+                dsets.append(key)
+                    
     # handle case of loading subset of file
-    if (end is None) or (end > n_images):
-        end = n_images
-    n_images = end - start
+    if (end is None) or (end > attrs['n_images']):
+        end = attrs['n_images']
+    attrs['n_images'] = end - start
     
-    # retrieve data
-    data[itype] = np.zeros((n_images,) + det_shape).astype(np.float32)
-    data['orientations'] = np.zeros((n_images, 4)).astype(np.float32)
-    data['pixel_position_reciprocal'] = np.zeros((3,) + det_shape).astype(np.float32)
-    data['pixel_index_map'] = np.zeros(det_shape + (2,)).astype(int)
+    # set up empty arrays to be populated with data with single precision
+    data['intensities'] = np.zeros((attrs['n_images'],) + attrs['det_shape']).astype(np.float32)
+    data['pixel_position_reciprocal'] = np.zeros((3,) + attrs['det_shape']).astype(np.float32)
+    data['pixel_index_map'] = np.zeros(attrs['det_shape'] + (2,)).astype(int)
+    if 'orientations' in dsets:
+        data['orientations'] = np.zeros((attrs['n_images'], 4)).astype(np.float32)
+    if 'conformations' in dsets:
+        data['conformations'] = np.zeros(attrs['n_images']).astype(np.float32)
     if load_ivol:
         data['volume'] = np.zeros((151,151,151), dtype=np.complex128) 
-    if load_confs:
-        data['conformations'] = np.zeros(n_images).astype(int)
 
+    # retrieve data arrays
     with h5py.File(input_file, 'r') as f:
-        for key in data.keys():
-            if key in ['orientations', itype, 'conformations']:
-                data[key][:] = f[key][start:end]
-            else:
+        for key in ['pixel_position_reciprocal', 'pixel_index_map']:
+            try:
                 data[key][:] = f[key][:]
-                
-    # flatten each image
-    data['intensities'] = data[itype].reshape(n_images,1,n_pixels_per_image)
-    data['pixel_position_reciprocal'] = data['pixel_position_reciprocal'].reshape(3,1,n_pixels_per_image)
-    data['pixel_index_map'] = data['pixel_index_map']
-            
-    data['n_images'] = n_images
-    data['n_pixels_per_image'] = n_pixels_per_image
-    data['reciprocal_extent'] = reciprocal_extent
-    data['det_dist'] = det_dist
-    data['det_shape'] = det_shape
+            except ValueError:
+                print(f"Detected a spinifel-style dataset, tranposing {key} axes")
+                data[key] = np.moveaxis(f[key][:], -1, 0)
+        if load_ivol:
+            data['volume'][:] = f[key][:]
+        for key in dsets:
+            if key == 'photons' or key == 'intensities':
+                data['intensities'][:] = f[key][start:end]
+            else:
+                try:
+                    data[key][:] = f[key][start:end]
+                except ValueError:
+                    print(f"Detected a spinifel-style dataset, flattening one dimension of {key}")
+                    data[key][:] = f[key][start:end].reshape(data[key].shape[0], data[key].shape[-1])
 
-    if 'photons' in data.keys():
-        data.pop('photons', None)
+    # flatten each image and corresponding positions in reciprocal space
+    data['intensities'] = data['intensities'].reshape(attrs['n_images'],1,attrs['n_pixels_per_image'])
+    data['pixel_position_reciprocal'] = data['pixel_position_reciprocal'].reshape(3,1,attrs['n_pixels_per_image'])
+
+    # compute resolution of corner pixel and store attributes
+    data['reciprocal_extent'] = np.linalg.norm(data['pixel_position_reciprocal'], axis=0).max()
+    for key in attrs.keys():
+        data[key] = attrs[key]
 
     return data
 
