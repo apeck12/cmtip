@@ -1,9 +1,11 @@
 import numpy as np
-import h5py, sys
+import h5py, sys, os
+import cmtip.phasing as phaser
 
 """
-Functions for data pre-processing: loading, binning, cutting resolution,
-reassembling data from panels to detector shape.
+Functions for data pre-processing -- loading, binning, cutting resolution,
+reassembling data from panels to detector shape -- and for checkpointing
+intermediate results during an MTIP run.
 """
 
 def load_h5(input_file, start=0, end=None, load_ivol=False):
@@ -264,3 +266,49 @@ def assemble_image_stack_batch(image_stack, index_map):
         image[:, index_map[l, :, :, 0], index_map[l, :, :, 1]] = image_stack[:, l, :, :]
 
     return image
+
+
+def save_checkpoint(generation, output, checkpoint):
+    """
+    Save an h5 file containing the results from an MTIP iteration and also
+    the density map to an MRC file.
+    
+    :param generation: the current iteration of the MTIP pipeline
+    :param output: output directory
+    :param checkpoint: dictionary of arrays to save
+    """    
+    # save arrays needed to restart the MTIP pipeline
+    f = h5py.File(os.path.join(output, f"checkpoint_g{generation}.h5"), "w")
+    for key in checkpoint.keys():
+        if key != 'generation':
+            if checkpoint[key] is not None:
+                f.create_dataset(key, data=checkpoint[key])
+    f.close()
+    
+    # save the density map to a Chimera-compatible format
+    if 'rho_' in checkpoint.keys():
+        rho_unshifted = np.fft.ifftshift(checkpoint['rho_'])
+        phaser.maps.save_mrc(os.path.join(output, f"density{generation}.mrc"), rho_unshifted)
+    
+    return
+
+
+def load_checkpoint(input_file=None):
+    """
+    Load an intermediate checkpoint file or provide default values if 
+    no checkpoint file is supplied.
+    
+    :param input_file: path to h5 checkpoint file
+    :return checkpoint: dictionary containing output from an MTIP iteration
+    """
+    checkpoint = dict()
+    if input_file is None:
+        checkpoint['generation'] = 0
+        checkpoint['orientations'] = None
+    else:
+        with h5py.File(input_file, 'r') as f:
+            checkpoint['generation'] = int(input_file.split("/")[-1].split("g")[1][:-3])
+            for key in f.keys():
+                checkpoint[key] = f[key][:]
+                
+    return checkpoint
