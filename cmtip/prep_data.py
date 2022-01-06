@@ -280,9 +280,10 @@ def save_checkpoint(generation, output, checkpoint):
     # save arrays needed to restart the MTIP pipeline
     f = h5py.File(os.path.join(output, f"checkpoint_g{generation}.h5"), "w")
     for key in checkpoint.keys():
-        if key != 'generation':
+        if key not in ['generation', 'reciprocal_extent']:
             if checkpoint[key] is not None:
                 f.create_dataset(key, data=checkpoint[key])
+    f.attrs['reciprocal_extent'] = checkpoint['reciprocal_extent']
     f.close()
     
     # save the density map to a Chimera-compatible format
@@ -310,5 +311,6 @@ def load_checkpoint(input_file=None):
             checkpoint['generation'] = int(input_file.split("/")[-1].split("g")[1][:-3])
             for key in f.keys():
                 checkpoint[key] = f[key][:]
+            checkpoint['reciprocal_extent'] = f.attrs['reciprocal_extent']
                 
     return checkpoint
