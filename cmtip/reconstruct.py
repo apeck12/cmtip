@@ -21,30 +21,12 @@ def parse_input():
     parser.add_argument('-b', '--bin_factor', help='Factor by which to bin data', required=False, type=int, default=1)
     parser.add_argument('-g', '--use_gpu', help='Use cufinufft for GPU-accelerated NUFFT calculations', action='store_true')
     parser.add_argument('-a', '--aligned', help='Alignment from reference quaternions', action='store_true')
+    parser.add_argument('-cpt', '--checkpoint', help='Intermediate checkpoint file', required=False, type=str)
 
     return vars(parser.parse_args())
 
 
-def save_output(generation, output, ac, rho_, orientations=None):
-    """
-    Save output from each MTIP iteration.
-
-    :param generation: mtip iteration
-    :param output: output directory
-    :param ac: 3d array of autocorrelation
-    :param rho_: 3d array of fft shifted density
-    :param orientations: array of quaternions 
-    """
-    rho_unshifted = np.fft.ifftshift(rho_)
-    phaser.maps.save_mrc(os.path.join(output, "density%i.mrc" %generation), rho_unshifted)
-    phaser.maps.save_mrc(os.path.join(output, "ac%i.mrc" %generation), ac)
-    
-    if orientations is not None:
-        np.save(os.path.join(output, "orientations%i.npy" %generation), orientations)
-    return
-
-
-def run_mtip(data, M, output, aligned=True, n_iterations=10, use_gpu=False):
+def run_mtip(data, M, output, aligned=True, n_iterations=10, use_gpu=False, checkpoint=load_checkpoint()):
     """
     Run MTIP algorithm.
     
@@ -54,32 +36,32 @@ def run_mtip(data, M, output, aligned=True, n_iterations=10, use_gpu=False):
     :param aligned: if False use ground truth quaternions
     :param n_iterations: number of MTIP iterations to run, default=10
     :param use_gpu: boolean; if True, use cufinufft for NUFFT calculations
+    :param checkpoint: dictionary containing intermediate results
     """  
     print("Running MTIP")
     start_time = time.time()
     
     # alignment parameters
     n_ref, res_limit = 5000, 9
-
-    # iteration 0: ac_estimate is unknown
-    generation = 0
-    orientations = None
     if aligned:
         print("Using ground truth quaternions")
-        orientations = data['orientations']
+        checkpoint['orientations'] = data['orientations']
 
-    ac = autocorrelation.solve_ac(generation,
-                                  data['pixel_position_reciprocal'],
-                                  data['reciprocal_extent'],
-                                  data['intensities'],
-                                  M,
-                                  orientations=orientations,
-                                  use_gpu=use_gpu)
-    ac_phased, support_, rho_ = phaser.phase(generation, ac)
-    save_output(generation, output, ac, rho_, orientations=None)
+    # iteration 0: ac_estimate is unknown
+    if checkpoint['generation'] == 0:
+        ac = autocorrelation.solve_ac(checkpoint['generation'],
+                                      data['pixel_position_reciprocal'],
+                                      data['reciprocal_extent'],
+                                      data['intensities'],
+                                      M,
+                                      orientations=checkpoint['orientations'],
+                                      use_gpu=use_gpu)
+        checkpoint['ac_phased'], checkpoint['support_'], checkpoint['rho_'] = phaser.phase(checkpoint['generation'], ac)
+        checkpoint['reciprocal_extent'] = data['reciprocal_extent']
+        save_checkpoint(0, output, checkpoint)
     
     # iterations 1-n_iterations: ac_estimate from phasing
-    for generation in range(1, n_iterations):
+    for generation in range(checkpoint['generation']+1, n_iterations):
         # align slices using clipped data
         if not aligned:
             pixel_position_reciprocal = clip_data(data['pixel_position_reciprocal'],
@@ -87,29 +69,28 @@ def run_mtip(data, M, output, aligned=True, n_iterations=10, use_gpu=False):
                                                   res_limit)
             intensities = clip_data(data['intensities'],
                                     data['pixel_position_reciprocal'], res_limit)
-            orientations = alignment.match_orientations(generation,
-                                                        pixel_position_reciprocal,
-                                                        data['reciprocal_extent'],
-                                                        intensities,
-                                                        ac_phased.astype(np.float32),
-                                                        n_ref,
-                                                        use_gpu=use_gpu)
-        else:
-            print("Using ground truth quaternions")
-            orientations = data['orientations']
-
+            checkpoint['orientations'] = alignment.match_orientations(generation,
+                                                                      pixel_position_reciprocal,
+                                                                      data['reciprocal_extent'],
+                                                                      intensities,
+                                                                      checkpoint['ac_phased'].astype(np.float32),
+                                                                      n_ref,
+                                                                      use_gpu=use_gpu)
         # solve for autocorrelation
-        ac = autocorrelation.solve_ac(generation,
+        checkpoint['ac'] = autocorrelation.solve_ac(generation,
                                       data['pixel_position_reciprocal'],
                                       data['reciprocal_extent'],
                                       data['intensities'],
                                       M,
-                                      orientations=orientations.astype(np.float32),
+                                      orientations=checkpoint['orientations'].astype(np.float32),
                                       use_gpu=use_gpu,
-                                      ac_estimate=ac_phased.astype(np.float32))
+                                      ac_estimate=checkpoint['ac_phased'].astype(np.float32))
         # phase
-        ac_phased, support_, rho_ = phaser.phase(generation, ac, support_, rho_)
-        save_output(generation, output, ac, rho_, orientations)
+        checkpoint['ac_phased'], checkpoint['support_'], checkpoint['rho_'] = phaser.phase(generation, 
+                                                                                           checkpoint['ac'], 
+                                                                                           checkpoint['support_'], 
+                                                                                           checkpoint['rho_'])
+        save_checkpoint(generation, output, checkpoint)
 
     print("elapsed time is %.2f" %((time.time() - start_time)/60.0))
     return
@@ -135,8 +116,12 @@ def main():
         data['pixel_index_map'] = bin_pixel_index_map(data['pixel_index_map'], args['bin_factor'])
         data['det_shape'] = data['pixel_index_map'].shape[:3]
 
+    # load intermediate checkpoint file (or gather dummy values)
+    checkpoint = load_checkpoint(args['checkpoint'])
+
     # reconstruct density from simulated diffraction images 
-    run_mtip(data, args['M'], args['output'], aligned=args['aligned'], n_iterations=args['niter'], use_gpu=args['use_gpu'])
+    run_mtip(data, args['M'], args['output'], aligned=args['aligned'], 
+             n_iterations=args['niter'], use_gpu=args['use_gpu'], checkpoint=checkpoint)
 
 
 if __name__ == '__main__':
