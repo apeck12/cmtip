@@ -57,6 +57,7 @@ def run_mtip(data, M, output, aligned=True, n_iterations=10, use_gpu=False, chec
                                       orientations=checkpoint['orientations'],
                                       use_gpu=use_gpu)
         checkpoint['ac_phased'], checkpoint['support_'], checkpoint['rho_'] = phaser.phase(checkpoint['generation'], ac)
+        checkpoint['reciprocal_extent'] = data['reciprocal_extent']
         save_checkpoint(0, output, checkpoint)
     
     # iterations 1-n_iterations: ac_estimate from phasing
@@ -76,7 +77,7 @@ def run_mtip(data, M, output, aligned=True, n_iterations=10, use_gpu=False, chec
                                                                       n_ref,
                                                                       use_gpu=use_gpu)
         # solve for autocorrelation
-        ac = autocorrelation.solve_ac(generation,
+        checkpoint['ac'] = autocorrelation.solve_ac(generation,
                                       data['pixel_position_reciprocal'],
                                       data['reciprocal_extent'],
                                       data['intensities'],
@@ -86,7 +87,7 @@ def run_mtip(data, M, output, aligned=True, n_iterations=10, use_gpu=False, chec
                                       ac_estimate=checkpoint['ac_phased'].astype(np.float32))
         # phase
         checkpoint['ac_phased'], checkpoint['support_'], checkpoint['rho_'] = phaser.phase(generation, 
-                                                                                           ac, 
+                                                                                           checkpoint['ac'], 
                                                                                            checkpoint['support_'], 
                                                                                            checkpoint['rho_'])
         save_checkpoint(generation, output, checkpoint)

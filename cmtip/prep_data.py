@@ -294,18 +294,22 @@ def save_checkpoint(generation, output, checkpoint):
     return
 
 
-def load_checkpoint(input_file=None):
+def load_checkpoint(input_file=None, rank=None):
     """
     Load an intermediate checkpoint file or provide default values if 
     no checkpoint file is supplied.
     
     :param input_file: path to h5 checkpoint file
+    :param rank: rank of current node; None if in sequential mode
     :return checkpoint: dictionary containing output from an MTIP iteration
     """
     checkpoint = dict()
     if input_file is None:
         checkpoint['generation'] = 0
-        checkpoint['orientations'] = None
+        if rank is None:
+            checkpoint['orientations'] = None
+        else:
+            checkpoint[f'orientations_r{rank}'] = None
     else:
         with h5py.File(input_file, 'r') as f:
             checkpoint['generation'] = int(input_file.split("/")[-1].split("g")[1][:-3])
