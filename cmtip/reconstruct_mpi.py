@@ -68,19 +68,14 @@ def run_mtip_mpi(comm, data, M, output, a_params, use_gpu=False, aligned=True, n
                                                               data['intensities'], 
                                                               data['det_shape'], 
                                                               res_limit_ac[0])
-        reciprocal_extent = np.linalg.norm(pixel_position_reciprocal, axis=0).max()
-        checkpoint['reciprocal_extent'] = reciprocal_extent
-        print(f"Iteration 0: trimmed data to {1e10/reciprocal_extent} A resolution")
+        checkpoint['reciprocal_extent'] = np.linalg.norm(pixel_position_reciprocal, axis=0).max()
+        print(f"Iteration 0: trimmed data to {1e10/checkpoint['reciprocal_extent']} A resolution")
 
-        ac = autocorrelation.solve_ac_mpi(comm, 
-                                          checkpoint['generation'],
-                                          pixel_position_reciprocal,
-                                          reciprocal_extent,
-                                          intensities,
-                                          M[0],
-                                          orientations=checkpoint[f'orientations_r{rank}'],
-                                          use_gpu=use_gpu)
-        checkpoint['ac_phased'], checkpoint['support_'], checkpoint['rho_'] = phaser.phase_mpi(comm, 0, ac)
+        checkpoint['ac'] = autocorrelation.solve_ac_mpi(comm, checkpoint['generation'], pixel_position_reciprocal,
+                                                        checkpoint['reciprocal_extent'], intensities, M[0],
+                                                        orientations=checkpoint[f'orientations_r{rank}'], use_gpu=use_gpu)
+
+        checkpoint['ac_phased'], checkpoint['support_'], checkpoint['rho_'] = phaser.phase_mpi(comm, 0, checkpoint['ac'])
         if rank == 0:
             save_checkpoint(checkpoint['generation'], output, checkpoint)
 
