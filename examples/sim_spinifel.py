@@ -86,7 +86,7 @@ def simulate_writeh5(args):
     f.create_dataset("pixel_position_reciprocal", data=exp.det.pixel_position_reciprocal) # s-vectors in m-1 
     f.create_dataset("volume", data=exp.volumes[0]) # reciprocal space volume, 151 pixels cubed
     f.create_dataset("pixel_index_map", data=exp.det.pixel_index_map) # indexing map for reassembly
-    f.create_dataset("orientations", data=exp._orientations) # ground truth quaternions
+    f.create_dataset("orientations", data=np.expand_dims(exp._orientations, axis=1)) # ground truth quaternions
     f.create_dataset("polarization", data=exp.det.polarization_correction) # polarization correction
     f.create_dataset("solid_angle", data=exp.det.solid_angle_per_pixel) # solid angle correction 
 
