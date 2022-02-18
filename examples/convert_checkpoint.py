@@ -28,8 +28,9 @@ def main():
 
         # load checkpoint file
         checkpoint = load_checkpoint(input_file=args['cpt'], rank=args['rank'])
-        key_name = [key for key in checkpoint.keys() if key.startswith('orientations')][0]
-        checkpoint['orientations'] = checkpoint.pop(key_name)
+        if checkpoint['generation'] != 0:
+            key_name = [key for key in checkpoint.keys() if key.startswith('orientations')][0]
+            checkpoint['orientations'] = checkpoint.pop(key_name)
 
         # save in pickle format
         fname = os.path.join(args['output'], f"generation_{checkpoint['generation']}.pickle")
