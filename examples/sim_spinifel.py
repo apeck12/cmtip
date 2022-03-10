@@ -1,7 +1,7 @@
 import argparse, time, os
 import numpy as np
 import skopi as sk
-import h5py
+import h5py, sys
 
 """
 Script for generating SPI datasets for reconstruction in spinifel. Either noise-free
@@ -71,6 +71,7 @@ def simulate_writeh5(args):
     """
     print("Simulating diffraction images")
     start_time = time.time()
+    command_line = sys.argv
 
     # set image type
     if args['quantize']:
@@ -108,6 +109,7 @@ def simulate_writeh5(args):
     f.attrs['n_pixels_per_image'] = exp.det.pixel_num_total # number of total pixels per image
     f.attrs['det_shape'] = exp.det.shape # detector shape (n_panels, panel_num_x, panel_num_y)
     f.attrs['det_distance'] = float(args['det_info'][2]) # detector distance in meters
+    f.attrs['command_line'] = " ".join(sys.argv) # command line arguments
     
     f.close()
 
@@ -137,7 +139,6 @@ def main():
 
     # simulate images and save
     simulate_writeh5(args)
-
 
 if __name__ == '__main__':
     main()
