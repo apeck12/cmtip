@@ -35,6 +35,7 @@ def forward_cpu(ugrid, H_, K_, L_, support, use_recip_sym):
         ugrid *= support 
         
     # Allocate space in memory and solve NUFFT
+    ugrid = ugrid.astype(np.complex64)
     nuvect = np.zeros(H_.shape, dtype=np.complex64)
     nfft.nufft3d2(H_, K_, L_, ugrid, out=nuvect, eps=1.0e-12, isign=-1)
     
