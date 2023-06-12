@@ -59,10 +59,10 @@ def setup_linops_mpi(comm, H, K, L, data, ac_support, weights, x0,
     # Using upsampled convolution technique instead of ADA
     M_ups = M * 2
     if use_gpu:
-        ugrid_conv = nufft.adjoint_gpu(np.ones_like(data), H_, K_, L_,
+        ugrid_conv = nufft.adjoint_gpu(np.ones_like(data, dtype=np.complex64), H_, K_, L_,
                                        M_ups, use_recip_sym=use_recip_sym, support=None)
     else:
-        ugrid_conv = nufft.adjoint_cpu(np.ones_like(data), H_, K_, L_, 
+        ugrid_conv = nufft.adjoint_cpu(np.ones_like(data, dtype=np.complex64), H_, K_, L_, 
                                        M_ups, use_recip_sym=use_recip_sym, support=None)
     ugrid_conv = reduce_bcast(comm, ugrid_conv)
     F_ugrid_conv_ = np.fft.fftn(np.fft.ifftshift(ugrid_conv)) 
@@ -79,7 +79,7 @@ def setup_linops_mpi(comm, H, K, L, data, ac_support, weights, x0,
         shape=(Mtot, Mtot),
         matvec=W_matvec)
 
-    nuvect_Db = data * weights
+    nuvect_Db = (data * weights).astype(np.complex64)
     if use_gpu:
         uvect_ADb = nufft.adjoint_gpu(nuvect_Db, H_, K_, L_, M,
                                       support=ac_support, use_recip_sym=use_recip_sym).flatten()
@@ -129,7 +129,7 @@ def solve_ac_mpi(comm, generation, pixel_position_reciprocal, reciprocal_extent,
         ac_estimate = np.zeros((M,)*3)
     else:
         ac_smoothed = gaussian_filter(ac_estimate, 0.5)
-        ac_support = (ac_smoothed > 1e-12).astype(np.float)
+        ac_support = (ac_smoothed > 1e-12).astype(np.float32)
         ac_estimate *= ac_support
     weights = np.ones(N).astype(np.float32)
 

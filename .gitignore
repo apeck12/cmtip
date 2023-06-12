@@ -4,3 +4,5 @@ __pycache__/
 
 # From unit tests
 *.png
+
+.vscode/
