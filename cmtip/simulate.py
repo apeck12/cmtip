@@ -3,6 +3,8 @@ import numpy as np
 import skopi as sk
 import h5py
 
+from sk.util import asnumpy
+
 """
 Simulate a simple SPI dataset on either a SimpleSquare or LCLSDetector. Either intensities 
 (default) or photons (intensities+Poission noise) are computed, and then corrected for the
@@ -66,7 +68,6 @@ def setup_experiment(args):
     
     return exp
 
-
 def simulate_writeh5(args):
     """
     Simulate diffraction images and save to h5 file.
@@ -86,10 +87,10 @@ def simulate_writeh5(args):
     f = h5py.File(args["output"], "w")
 
     # store useful experiment arrays
-    f.create_dataset("pixel_position_reciprocal", data=np.moveaxis(exp.det.pixel_position_reciprocal, -1, 0)) # s-vectors in m-1 
-    f.create_dataset("volume", data=exp.volumes[0]) # reciprocal space volume, 151 pixels cubed
-    f.create_dataset("pixel_index_map", data=exp.det.pixel_index_map) # indexing map for reassembly
-    f.create_dataset("orientations", data=exp._orientations) # ground truth quaternions
+    f.create_dataset("pixel_position_reciprocal", data=np.moveaxis(asnumpy(exp.det.pixel_position_reciprocal, -1, 0))) # s-vectors in m-1
+    f.create_dataset("volume", data=asnumpy(exp.volumes[0])) # reciprocal space volume, 151 pixels cubed
+    f.create_dataset("pixel_index_map", data=asnumpy(exp.det.pixel_index_map)) # indexing map for reassembly
+    f.create_dataset("orientations", data=asnumpy(exp._orientations)) # ground truth quaternions
 
     # simulate images and save to h5 file
     imgs = f.create_dataset(itype, shape=((args['n_images'],) + exp.det.shape))
@@ -101,7 +102,7 @@ def simulate_writeh5(args):
         imgs[num,:,:,:] = img / exp.det.polarization_correction / exp.det.solid_angle_per_pixel / 1e6 # scale for nufft bounds
 
     # save useful attributes
-    f.attrs['reciprocal_extent'] = np.linalg.norm(exp.det.pixel_position_reciprocal, axis=-1).max() # max |s|
+    f.attrs['reciprocal_extent'] = np.linalg.norm(asnumpy(exp.det.pixel_position_reciprocal, axis=-1)).max() # max |s|
     f.attrs['n_images'] = args['n_images'] # number of simulated shots
     f.attrs['n_pixels_per_image'] = exp.det.pixel_num_total # number of total pixels per image
     f.attrs['det_shape'] = exp.det.shape # detector shape (n_panels, panel_num_x, panel_num_y)
@@ -145,11 +146,11 @@ def simulate_images(args):
 
     # populate rest of dictionary
     data["orientations"] = exp._orientations # quaternions
-    data['reciprocal_extent'] = np.linalg.norm(exp.det.pixel_position_reciprocal, axis=-1).max() # max |s|
-    data['pixel_position_reciprocal'] = np.moveaxis(exp.det.pixel_position_reciprocal, -1, 0) # s-vectors in m-1
+    data['reciprocal_extent'] = np.linalg.norm(asnumpy(exp.det.pixel_position_reciprocal, axis=-1)).max() # max |s|
+    data['pixel_position_reciprocal'] = np.moveaxis(asnumpy(exp.det.pixel_position_reciprocal, -1, 0)) # s-vectors in m-1
     data['n_images'] = args['n_images'] # number of simulated shots
     data['n_pixels_per_image'] = exp.det.pixel_num_total # number of total pixels per image
-    data['volume'] = exp.volumes[0] # reciprocal space volume
+    data['volume'] = asnumpy(exp.volumes[0]) # reciprocal space volume
     data['pixel_index_map'] = exp.det.pixel_index_map # indexing map for reassembly
     data['det_shape'] = exp.det.shape # detector shape (n_panels, panel_num_x, panel_num_y)
 
