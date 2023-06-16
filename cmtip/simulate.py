@@ -99,7 +99,7 @@ def simulate_writeh5(args):
             img = exp.generate_image_stack(return_intensities=True)
         else:
             img = exp.generate_image_stack(return_photons=True)
-        imgs[num,:,:,:] = img #/ exp.det.polarization_correction / exp.det.solid_angle_per_pixel / 1e6 # scale for nufft bounds
+        imgs[num,:,:,:] = asnumpy(img) #/ exp.det.polarization_correction / exp.det.solid_angle_per_pixel / 1e6 # scale for nufft bounds
         imgs[num,:,:,:] /= exp.det.polarization_correction / exp.det.solid_angle_per_pixel / 1e6 # scale for nufft bounds
 
     # save useful attributes
