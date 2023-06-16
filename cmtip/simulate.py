@@ -96,9 +96,9 @@ def simulate_writeh5(args):
     imgs = f.create_dataset(itype, shape=((args['n_images'],) + exp.det.shape))
     for num in range(args['n_images']):
         if itype == 'intensities':
-            img = exp.generate_image_stack(return_intensities=True)
+            img = asnumpy(exp.generate_image_stack(return_intensities=True))
         else:
-            img = exp.generate_image_stack(return_photons=True)
+            img = asnumpy(exp.generate_image_stack(return_photons=True))
         imgs[num,:,:,:] = img / exp.det.polarization_correction / exp.det.solid_angle_per_pixel / 1e6 # scale for nufft bounds
 
     # save useful attributes
