@@ -3,7 +3,7 @@ import numpy as np
 import skopi as sk
 import h5py
 
-from sk.util import asnumpy
+from skopi.util import asnumpy
 
 """
 Simulate a simple SPI dataset on either a SimpleSquare or LCLSDetector. Either intensities 
