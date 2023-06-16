@@ -101,7 +101,7 @@ def simulate_writeh5(args):
             img = exp.generate_image_stack(return_photons=True)
         imgs[num,:,:,:] = asnumpy(img) #/ exp.det.polarization_correction / exp.det.solid_angle_per_pixel / 1e6 # scale for nufft bounds
         imgs[num,:,:,:] /= asnumpy(exp.det.polarization_correction) #/ exp.det.solid_angle_per_pixel / 1e6 # scale for nufft bounds
-        imgs[num, :, :, :] /= exp.det.solid_angle_per_pixel / 1e6 # scale for nufft bounds
+        imgs[num, :, :, :] /= asnumpy(exp.det.solid_angle_per_pixel) / 1e6 # scale for nufft bounds
 
     # save useful attributes
     f.attrs['reciprocal_extent'] = np.linalg.norm(asnumpy(exp.det.pixel_position_reciprocal), axis=-1).max() # max |s|
