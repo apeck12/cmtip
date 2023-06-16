@@ -87,7 +87,7 @@ def simulate_writeh5(args):
     f = h5py.File(args["output"], "w")
 
     # store useful experiment arrays
-    f.create_dataset("pixel_position_reciprocal", data=np.moveaxis(asnumpy(exp.det.pixel_position_reciprocal, -1, 0))) # s-vectors in m-1
+    f.create_dataset("pixel_position_reciprocal", data=np.moveaxis(asnumpy(exp.det.pixel_position_reciprocal), -1, 0)) # s-vectors in m-1
     f.create_dataset("volume", data=asnumpy(exp.volumes[0])) # reciprocal space volume, 151 pixels cubed
     f.create_dataset("pixel_index_map", data=asnumpy(exp.det.pixel_index_map)) # indexing map for reassembly
     f.create_dataset("orientations", data=asnumpy(exp._orientations)) # ground truth quaternions
@@ -102,7 +102,7 @@ def simulate_writeh5(args):
         imgs[num,:,:,:] = img / exp.det.polarization_correction / exp.det.solid_angle_per_pixel / 1e6 # scale for nufft bounds
 
     # save useful attributes
-    f.attrs['reciprocal_extent'] = np.linalg.norm(asnumpy(exp.det.pixel_position_reciprocal, axis=-1)).max() # max |s|
+    f.attrs['reciprocal_extent'] = np.linalg.norm(asnumpy(exp.det.pixel_position_reciprocal), axis=-1).max() # max |s|
     f.attrs['n_images'] = args['n_images'] # number of simulated shots
     f.attrs['n_pixels_per_image'] = exp.det.pixel_num_total # number of total pixels per image
     f.attrs['det_shape'] = exp.det.shape # detector shape (n_panels, panel_num_x, panel_num_y)
@@ -146,8 +146,8 @@ def simulate_images(args):
 
     # populate rest of dictionary
     data["orientations"] = exp._orientations # quaternions
-    data['reciprocal_extent'] = np.linalg.norm(asnumpy(exp.det.pixel_position_reciprocal, axis=-1)).max() # max |s|
-    data['pixel_position_reciprocal'] = np.moveaxis(asnumpy(exp.det.pixel_position_reciprocal, -1, 0)) # s-vectors in m-1
+    data['reciprocal_extent'] = np.linalg.norm(asnumpy(exp.det.pixel_position_reciprocal), axis=-1).max() # max |s|
+    data['pixel_position_reciprocal'] = np.moveaxis(asnumpy(exp.det.pixel_position_reciprocal), -1, 0) # s-vectors in m-1
     data['n_images'] = args['n_images'] # number of simulated shots
     data['n_pixels_per_image'] = exp.det.pixel_num_total # number of total pixels per image
     data['volume'] = asnumpy(exp.volumes[0]) # reciprocal space volume
